@@ -20,8 +20,8 @@ FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 encoded_path = urllib.parse.quote(FILE_PATH)
 RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}"
 
-# Memuat data dengan cache yang stabil
-@st.cache_data(ttl=10)
+# Memuat data terbaru langsung dari GitHub
+@st.cache_data(ttl=5)
 def load_data_from_github():
     df = pd.read_csv(RAW_URL, encoding="latin1")
     return df
@@ -75,62 +75,75 @@ if not hasil_cari.empty:
         curr_id = str(person.get(id_col, '-'))
         curr_perusahaan = str(person.get('NAMA PERUSAHAAN', '-'))
 
-        st.markdown(f"### ✏️ Edit Data: **{curr_nama}**")
-        st.info(f"🆔 **ID Personil:** {curr_id}  |  🏢 **Perusahaan:** {curr_perusahaan}")
+        # Formulir Edit dengan Tampilan 2 Kolom yang Nyaman & Lengkap
+        with st.form("form_edit_karyawan_lengkap"):
+            st.markdown(f"### ✏️ Edit Data: **{curr_nama}**")
+            st.info(f"🆔 **ID Personil:** {curr_id}  |  🏢 **Perusahaan:** {curr_perusahaan}")
+            st.caption("Ubah data apa saja pada kolom di bawah ini, lalu klik tombol Simpan.")
 
-        # Menggunakan selectbox untuk memilih kolom spesifik yang ingin diubah (Sangat ringan & anti-blank)
-        col_names = list(df.columns)
-        
-        with st.form("form_edit_spesifik"):
-            st.markdown("##### Pilih Atribut yang Ingin Diubah:")
+            edited_values = {}
+            col_names = list(df.columns)
             
-            # Buat pilihan kolom yang sering diedit di atas, sisanya dalam pilihan lengkap
-            selected_col_to_edit = st.selectbox("Pilih Kolom / Atribut:", options=col_names, index=col_names.index('Nama Ibu Kandung') if 'Nama Ibu Kandung' in col_names else 0)
-            
-            current_val = person.get(selected_col_to_edit, '')
-            current_val_str = '' if pd.isna(current_val) else str(current_val)
-            
-            new_value = st.text_input(f"Nilai Baru untuk [{selected_col_to_edit}]:", value=current_val_str)
-            
+            # Menampilkan seluruh kolom dalam layout 2 kolom yang rapi
+            c1, c2 = st.columns(2)
+            for i, col in enumerate(col_names):
+                with (c1 if i % 2 == 0 else c2):
+                    unique_key = f"field_{i}_{col}"
+                    val_data = person.get(col, '')
+                    val_str = '' if pd.isna(val_data) else str(val_data)
+                    edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
+
             st.markdown("---")
-            submitted = st.form_submit_button("💾 Simpan Perubahan Ini ke GitHub", use_container_width=True)
+            submitted = st.form_submit_button("💾 Simpan Perubahan Secara Permanen ke GitHub", use_container_width=True)
             
             if submitted:
                 with st.spinner("Menyimpan perubahan langsung ke GitHub..."):
                     try:
-                        # Update langsung ke dataframe di session state
-                        if st.session_state.df_data[selected_col_to_edit].dtype in ['float64', 'int64']:
-                            if new_value.strip() == '':
-                                st.session_state.df_data.loc[target_row_idx, selected_col_to_edit] = float('nan')
-                            else:
-                                try:
-                                    st.session_state.df_data.loc[target_row_idx, selected_col_to_edit] = float(new_value) if '.' in new_value else int(new_value)
-                                except:
-                                    st.session_state.df_data.loc[target_row_idx, selected_col_to_edit] = new_value
-                        else:
-                            st.session_state.df_data.loc[target_row_idx, selected_col_to_edit] = new_value
+                        # Ambil DataFrame paling fresh langsung dari GitHub untuk menghindari konflik
+                        df_live = load_data_from_github()
+                        
+                        # Cari baris yang sama persis berdasarkan ID Personil agar akurat
+                        matched = df_live[df_live[id_col].astype(str) == curr_id]
+                        if not matched.empty:
+                            live_idx = matched.index[0]
+                            
+                            for col_name, val in edited_values.items():
+                                if df_live[col_name].dtype in ['float64', 'int64']:
+                                    if val.strip() == '':
+                                        df_live.loc[live_idx, col_name] = float('nan')
+                                    else:
+                                        try:
+                                            df_live.loc[live_idx, col_name] = float(val) if '.' in val else int(val)
+                                        except:
+                                            df_live.loc[live_idx, col_name] = val
+                                else:
+                                    df_live.loc[live_idx, col_name] = val
 
-                        # Kirim ke GitHub
-                        g = Github(st.secrets["GITHUB_TOKEN"])
-                        repo = g.get_repo(REPO_NAME)
-                        file_content = repo.get_contents(FILE_PATH)
-                        
-                        updated_csv_bytes = st.session_state.df_data.to_csv(index=False, encoding="latin1").encode("latin1")
-                        repo.update_file(
-                            path=FILE_PATH,
-                            message=f"Update {selected_col_to_edit} untuk ID {curr_id}",
-                            content=updated_csv_bytes,
-                            sha=file_content.sha
-                        )
-                        
-                        st.success(f"✅ Berhasil mengubah **{selected_col_to_edit}** menjadi **{new_value}** dan tersimpan permanen di GitHub!")
-                        st.balloons()
+                            # Kirim update ke GitHub via PyGithub
+                            g = Github(st.secrets["GITHUB_TOKEN"])
+                            repo = g.get_repo(REPO_NAME)
+                            file_content = repo.get_contents(FILE_PATH)
+                            
+                            updated_csv_bytes = df_live.to_csv(index=False, encoding="latin1").encode("latin1")
+                            repo.update_file(
+                                path=FILE_PATH,
+                                message=f"Update data nasional ID {curr_id}",
+                                content=updated_csv_bytes,
+                                sha=file_content.sha
+                            )
+                            
+                            # Bersihkan cache agar data langsung segar
+                            st.cache_data.clear()
+                            if 'df_data' in st.session_state:
+                                del st.session_state['df_data']
+                                
+                            st.success("✅ Perubahan berhasil disimpan permanen ke file CSV GitHub!")
+                            st.balloons()
+                            st.rerun()
+                        else:
+                            st.error("Gagal mencocokkan ID personil pada data terbaru GitHub.")
                     except Exception as e:
                         st.error(f"Gagal menyimpan ke GitHub: {e}")
-                        
-        with st.expander("👁️ Lihat Seluruh Data Lengkap Karyawan Ini"):
-            st.dataframe(pd.DataFrame([person]), use_container_width=True)
-            
     else:
         st.info(f"Ditemukan **{len(hasil_cari)} data** yang cocok:")
         st.dataframe(hasil_cari, use_container_width=True)
