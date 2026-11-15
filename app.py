@@ -60,14 +60,14 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     st.session_state.form_version += 1
     st.rerun()
 
-# --- PENCARIAN TEKS EKSKLUSIF (SUPER FLEKSIBEL) ---
+# Deteksi kolom ID secara aman untuk rujukan data
+cols_list = list(df_master.columns)
+id_col = next((col for col in cols_list if 'id' in str(col).lower() or 'personil' in str(col).lower()), cols_list[0])
+nama_col = next((col for col in cols_list if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), cols_list[1] if len(cols_list) > 1 else cols_list[0])
+
+# --- PENCARIAN UNIVERSAL (MENCOCOKKAN SEMUA KOLOM) ---
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
 search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RIKA SITI RUKOYAH):", key="input_search_query")
-
-# Deteksi kolom nama dan ID secara aman
-cols_list = list(df_master.columns)
-nama_col = next((col for col in cols_list if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), cols_list[1] if len(cols_list) > 1 else cols_list[0])
-id_col = next((col for col in cols_list if 'id' in str(col).lower() or 'personil' in str(col).lower()), cols_list[0])
 
 # Reset pilihan jika kotak pencarian dikosongkan
 if not search_query:
@@ -78,12 +78,11 @@ hasil_cari = pd.DataFrame()
 
 if search_query:
     keywords = search_query.strip().split()
-    target_cols = [str(nama_col), str(id_col)]
     
-    # Pencarian cerdas: setiap kata yang diketik dicari di kolom Nama atau ID (fleksibel)
+    # Pencarian cerdas universal ke seluruh kolom tabel tanpa terkecuali
     mask = pd.Series(True, index=df_master.index)
     for kw in keywords:
-        kw_mask = df_master[target_cols].astype(str).apply(lambda row: row.str.contains(kw, case=False, na=False)).any(axis=1)
+        kw_mask = df_master.astype(str).apply(lambda row: row.str.contains(kw, case=False, na=False)).any(axis=1)
         mask = mask & kw_mask
         
     hasil_cari = df_master[mask]
@@ -98,11 +97,11 @@ if not hasil_cari.empty:
     else:
         st.warning(f"Ditemukan **{len(hasil_cari)} data** yang cocok dengan kata kunci **'{search_query}'**. Silakan pilih data yang sesuai dari tabel di bawah:")
         
-        # Tampilkan tabel pilihan interaktif dengan tombol pilih
+        # Tampilkan daftar interaktif dengan tombol pilih
         for idx, row in hasil_cari.iterrows():
             c_id = str(row.get(id_col, '-'))
             c_nama = str(row.get(nama_col, '-'))
-            c_perusahaan = str(row.get('NAMA PERUSAHAAN', '-'))
+            c_perusahaan = str(row.get('NAMA PERUSAHAAN', ''))
             
             cols_btn = st.columns([3, 2, 1])
             cols_btn[0].markdown(f"**{c_nama}** (ID: `{c_id}`)")
