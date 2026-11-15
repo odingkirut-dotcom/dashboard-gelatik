@@ -11,19 +11,21 @@ st.set_page_config(
 )
 
 # --- PENGATURAN GITHUB ---
-REPO_NAME = "odingkirut-dotcom/dashboard-gelatik"  # Sesuaikan dengan repository Anda
+REPO_NAME = "odingkirut-dotcom/dashboard-gelatik"
 FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
 st.title("🦅 Dashboard & Editor Data - PT. Gelatik Supra")
 st.markdown("Kelola, cari, dan edit data personil. Perubahan akan **langsung tersimpan secara permanen ke file CSV di GitHub**.")
 
-# 1. Fungsi membaca data langsung dari GitHub
+# 1. Fungsi membaca data langsung dari GitHub dengan aman
 def load_data_from_github():
     g = Github(st.secrets["GITHUB_TOKEN"])
     repo = g.get_repo(REPO_NAME)
-    contents = repo.get_contents(FILE_PATH)
-    csv_data = contents.decoded_content.decode("latin1")
-    df = pd.read_csv(io.StringIO(csv_data), encoding="latin1")
+    file_content = repo.get_contents(FILE_PATH)
+    
+    # Mengambil isi file dengan decode biner yang aman dari error encoding
+    decoded_bytes = file_content.decoded_content
+    df = pd.read_csv(io.BytesIO(decoded_bytes), encoding="latin1")
     
     # Filter khusus PT. Gelatik Supra
     if 'NAMA PERUSAHAAN' in df.columns:
@@ -37,28 +39,27 @@ def load_data_from_github():
     if 'Handphone' in df_gelatik.columns:
         df_gelatik['Handphone'] = df_gelatik['Handphone'].astype(str)
         
-    return df_gelatik, contents.sha
+    return df_gelatik, file_content.sha
 
-# 2. Fungsi menyimpan perubahan permanen ke GitHub (menggabungkan kembali dengan data perusahaan lain)
+# 2. Fungsi menyimpan perubahan permanen ke GitHub
 def save_data_to_github(df_updated_gelatik, file_sha, commit_message):
     g = Github(st.secrets["GITHUB_TOKEN"])
     repo = g.get_repo(REPO_NAME)
     
-    # Ambil file CSV utuh dari GitHub agar data perusahaan lain tidak ikut terhapus
-    original_contents = repo.get_contents(FILE_PATH)
-    orig_csv_data = original_contents.decoded_content.decode("latin1")
-    df_full = pd.read_csv(io.StringIO(orig_csv_data), encoding="latin1")
+    # Ambil file CSV utuh dari GitHub agar data perusahaan lain aman
+    original_file = repo.get_contents(FILE_PATH)
+    df_full = pd.read_csv(io.BytesIO(original_file.decoded_content), encoding="latin1")
     
-    # Update data perusahaan Gelatik ke dataframe utama berdasarkan index aslinya
+    # Update data perusahaan Gelatik ke dataframe utama
     df_full.update(df_updated_gelatik)
     
-    csv_buffer = io.StringIO()
-    df_full.to_csv(csv_buffer, index=False, encoding="latin1")
+    # Konversi kembali ke format CSV ber-encoding latin1
+    updated_csv_bytes = df_full.to_csv(index=False, encoding="latin1").encode("latin1")
     
     repo.update_file(
         path=FILE_PATH,
         message=commit_message,
-        content=csv_buffer.getvalue().encode("latin1"),
+        content=updated_csv_bytes,
         sha=file_sha
     )
 
@@ -75,7 +76,7 @@ except Exception as e:
 
 df = st.session_state.df_data
 
-# Tombol untuk memuat ulang data terbaru dari GitHub
+# Tombol untuk memuat ulang data terbaru
 if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     del st.session_state['df_data']
     st.rerun()
@@ -152,6 +153,6 @@ if search_query:
         st.info(f"Ditemukan **{len(hasil_cari)} data** yang mirip. Ketik nama lebih spesifik agar hanya 1 orang yang muncul untuk diedit:")
         st.dataframe(hasil_cari[['ID Personil', 'Nama', 'Nama Project', 'Area CBS', 'Handphone']], use_container_width=True)
 else:
-    st.info("💡 Ketik nama karyawan atau ID personil pada kotak pencarian di atas untuk mulai melihat dan mengedit informasinya.")
+    st.info("💡 Ketik nama karyawan atau ID personil pada kotak pencarian di on atas untuk mulai melihat dan mengedit informasinya.")
     with st.expander("Lihat Seluruh Tabel Data PT. Gelatik Supra"):
         st.dataframe(df, use_container_width=True)
