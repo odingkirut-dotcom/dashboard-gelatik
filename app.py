@@ -13,7 +13,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Bersihkan semua cache Streamlit secara total agar tidak ada data nyangkut
 st.cache_data.clear()
 
 st.title("🦅 Dashboard Data - Database Nasional")
@@ -25,31 +24,24 @@ FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
 encoded_path = urllib.parse.quote(FILE_PATH)
 
-# Memuat data terbaru langsung dari GitHub dengan anti-cache tingkat tinggi
+# Memuat data langsung via Raw URL GitHub dengan anti-cache
 def load_data_from_github():
-    api_url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}?t={time.time()}"
-    headers = {
-        "Authorization": f"Bearer {st.secrets['GITHUB_TOKEN']}",
-        "Accept": "application/vnd.github+json",
-        "Cache-Control": "no-cache, no-store, must-revalidate"
-    }
+    raw_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}?t={time.time()}"
+    resp = requests.get(raw_url)
     
-    resp = requests.get(api_url, headers=headers)
-    if resp.status_code == 200:
-        file_data = resp.json()
-        download_url = file_data.get("download_url")
-        # Unduh file mentah langsung dengan parameter timestamp acak
-        resp_dl = requests.get(f"{download_url}&t={time.time()}", headers={"Cache-Control": "no-cache"})
-        file_decoded = resp_dl.content.decode("latin1")
-    else:
-        raw_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}?t={time.time()}"
-        resp_dl = requests.get(raw_url)
-        file_decoded = resp_dl.content.decode("latin1")
+    if resp.status_code != 200:
+        # Coba fallback tanpa spasi/enkode khusus jika gagal
+        raw_url_fallback = f"https://raw.githubusercontent.com/{REPO_NAME}/main/Summary%20Database%20Nasional%2013%20November%202026.csv?t={time.time()}"
+        resp = requests.get(raw_url_fallback)
         
-    df = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
-    df.columns = df.columns.astype(str).str.strip()
-    df = df.fillna("")
-    return df
+    if resp.status_code == 200:
+        file_decoded = resp.content.decode("latin1")
+        df = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
+        df.columns = df.columns.astype(str).str.strip()
+        df = df.fillna("")
+        return df
+    else:
+        raise Exception(f"Gagal mengunduh file dari GitHub (Status Code: {resp.status_code}). Periksa kembali nama file CSV di repository Anda.")
 
 try:
     with st.spinner("Mengambil database nasional terbaru dari GitHub..."):
@@ -88,10 +80,8 @@ hasil_cari = pd.DataFrame()
 if search_query:
     query_clean = search_query.strip().lower()
     
-    # Pencarian berlapis: Cek apakah query ada di dalam string baris manapun
     match_indices = []
     for idx, row in df_master.iterrows():
-        # Gabungkan seluruh nilai baris menjadi satu teks besar
         combined_row_text = " ".join(row.values).lower()
         if query_clean in combined_row_text:
             match_indices.append(idx)
