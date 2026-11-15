@@ -128,7 +128,6 @@ if 'selected_id' in st.session_state:
     # Pencocokan longgar untuk active_id pada df_fresh
     matched_active = df_fresh[df_fresh[id_col].astype(str).str.strip().str.lower() == active_id.strip().lower()]
     if matched_active.empty:
-        # Fallback cari di semua kolom jika kolom ID spesifik tidak pas
         for col in df_fresh.columns:
             m = df_fresh[df_fresh[col].astype(str).str.strip().str.lower() == active_id.strip().lower()]
             if not m.empty:
@@ -196,16 +195,21 @@ if 'selected_id' in st.session_state:
                         df_live.columns = df_live.columns.astype(str).str.strip()
                         df_live = df_live.fillna("")
                         
-                        # Deteksi kolom ID secara aman dan pencocokan longgar pada data live
+                        # Pencocokan baris live secara cerdas (coba berdasarkan ID dulu, jika gagal pakai Nama)
                         live_cols_list = list(df_live.columns)
                         live_id_col = next((col for col in live_cols_list if 'id' in col.lower() or 'personil' in col.lower()), live_cols_list[0])
+                        live_nama_col = next((col for col in live_cols_list if 'nama' in col.lower() and 'perusahaan' not in col.lower() and 'ibu' not in col.lower()), live_cols_list[1] if len(live_cols_list) > 1 else live_cols_list[0])
                         
                         matched_live = df_live[df_live[live_id_col].astype(str).str.strip().str.lower() == active_id.strip().lower()]
                         if matched_live.empty:
-                            for col in df_live.columns:
-                                m = df_live[df_live[col].astype(str).str.strip().str.lower() == active_id.strip().lower()]
-                                if not m.empty:
-                                    matched_live = m
+                            # Fallback pencocokan berdasarkan Nama jika ID gagal
+                            matched_live = df_live[df_live[live_nama_col].astype(str).str.strip().str.lower() == curr_nama.strip().lower()]
+                        
+                        if matched_live.empty:
+                            # Fallback mutlak pencarian di seluruh sel
+                            for idx_l, row_l in df_live.iterrows():
+                                if active_id.lower() in " ".join(row_l.values).lower():
+                                    matched_live = df_live.loc[[idx_l]]
                                     break
                         
                         if not matched_live.empty:
@@ -234,7 +238,7 @@ if 'selected_id' in st.session_state:
                             else:
                                 st.error(f"Gagal menyimpan ke GitHub API: {resp_put.text}")
                         else:
-                            st.error(f"Gagal mencocokkan ID '{active_id}' pada data terbaru GitHub.")
+                            st.error(f"Gagal mencocokkan data pada file terbaru GitHub.")
                     except Exception as e:
                         st.error(f"Gagal menyimpan ke GitHub: {e}")
 else:
