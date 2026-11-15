@@ -125,7 +125,15 @@ if 'selected_id' in st.session_state:
     except:
         df_fresh = df_master
 
-    matched_active = df_fresh[df_fresh[id_col].astype(str) == active_id]
+    # Pencocokan longgar untuk active_id pada df_fresh
+    matched_active = df_fresh[df_fresh[id_col].astype(str).str.strip().str.lower() == active_id.strip().lower()]
+    if matched_active.empty:
+        # Fallback cari di semua kolom jika kolom ID spesifik tidak pas
+        for col in df_fresh.columns:
+            m = df_fresh[df_fresh[col].astype(str).str.strip().str.lower() == active_id.strip().lower()]
+            if not m.empty:
+                matched_active = m
+                break
     
     if not matched_active.empty:
         active_row_idx = matched_active.index[0]
@@ -188,11 +196,17 @@ if 'selected_id' in st.session_state:
                         df_live.columns = df_live.columns.astype(str).str.strip()
                         df_live = df_live.fillna("")
                         
-                        # Deteksi kolom ID secara aman pada data live
+                        # Deteksi kolom ID secara aman dan pencocokan longgar pada data live
                         live_cols_list = list(df_live.columns)
                         live_id_col = next((col for col in live_cols_list if 'id' in col.lower() or 'personil' in col.lower()), live_cols_list[0])
                         
-                        matched_live = df_live[df_live[live_id_col].astype(str) == active_id]
+                        matched_live = df_live[df_live[live_id_col].astype(str).str.strip().str.lower() == active_id.strip().lower()]
+                        if matched_live.empty:
+                            for col in df_live.columns:
+                                m = df_live[df_live[col].astype(str).str.strip().str.lower() == active_id.strip().lower()]
+                                if not m.empty:
+                                    matched_live = m
+                                    break
                         
                         if not matched_live.empty:
                             live_idx = matched_live.index[0]
