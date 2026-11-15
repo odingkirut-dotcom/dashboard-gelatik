@@ -112,21 +112,21 @@ if 'selected_row_idx' in st.session_state:
                             "Accept": "application/vnd.github+json"
                         }
                         
+                        # --- AMBIL SHA DAN DATA TERBARU LIVE TEPAT SAAT TOMBOL DIKLIK ---
                         r_get = requests.get(api_url, headers=headers)
                         if r_get.status_code != 200:
                             st.error(f"Gagal mengambil file dari API GitHub (Status: {r_get.status_code})")
                             st.stop()
                             
                         j_data = r_get.json()
-                        sha = j_data['sha']
+                        sha = j_data['sha']  # SHA paling fresh dari GitHub
                         
-                        # Ambil konten terbaru live
                         r_dl = requests.get(f"{j_data['download_url']}?t={time.time()}")
                         df_live = pd.read_csv(io.StringIO(r_dl.content.decode("latin1")), encoding="latin1", dtype=str)
                         df_live.columns = df_live.columns.astype(str).str.strip()
                         df_live = df_live.fillna("")
                         
-                        # Update baris
+                        # Update baris pada data live yang paling baru
                         for k, v in edited_vals.items():
                             if k in df_live.columns:
                                 df_live.loc[idx_target, k] = v
@@ -137,7 +137,7 @@ if 'selected_row_idx' in st.session_state:
                         payload = {
                             "message": f"Update row {idx_target} via Dashboard",
                             "content": b64_content,
-                            "sha": sha
+                            "sha": sha  # Menggunakan SHA terbaru agar tidak konflik
                         }
                         
                         r_put = requests.put(api_url, headers=headers, json=payload)
