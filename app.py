@@ -17,7 +17,6 @@ st.markdown("Data Nasional per **13 November 2026**.")
 def load_data():
     df = pd.read_csv("Summary Database Nasional 13 November 2026.csv", encoding="latin1")
     df = df.dropna(subset=['Nama'])
-    # Rapikan format NoKTP dan Handphone agar tidak berantakan
     if 'NoKTP' in df.columns:
         df['NoKTP'] = df['NoKTP'].apply(lambda x: f"{int(x)}" if pd.notnull(x) and isinstance(x, (int, float)) else str(x))
     return df
@@ -67,7 +66,6 @@ st.subheader("🔎 Cari & Lihat Form Identitas")
 search_query = st.text_input("Ketik Nama atau ID Personil (contoh: RIKA SITI RUKOYAH):")
 
 if search_query:
-    # Cari kecocokan berdasarkan Nama atau ID Personil
     mask = (
         df['Nama'].str.contains(search_query.strip(), case=False, na=False) |
         df['ID Personil'].astype(str).str.contains(search_query.strip(), case=False, na=False)
@@ -77,7 +75,6 @@ if search_query:
     if len(hasil_cari) == 0:
         st.warning("Data tidak ditemukan. Coba periksa kembali ejaan nama.")
     else:
-        # Jika hasil lebih dari 1, beri dropdown agar user bisa pilih satu orang spesifik
         if len(hasil_cari) > 1:
             st.info(f"Ditemukan {len(hasil_cari)} data yang mirip. Silakan pilih satu orang di bawah ini:")
             pilihan_orang = hasil_cari['ID Personil'].astype(str) + " - " + hasil_cari['Nama'] + " (" + hasil_cari['Nama Project'].fillna('-') + ")"
@@ -87,7 +84,6 @@ if search_query:
         else:
             person = hasil_cari.iloc[0]
 
-        # Fungsi pembantu untuk menampilkan nilai dengan rapi
         def val(col_name):
             v = person.get(col_name, "-")
             return "-" if pd.isna(v) or str(v).strip() == "" else str(v)
@@ -103,4 +99,45 @@ if search_query:
             with tab1:
                 c1, c2 = st.columns(2)
                 with c1:
-                    st.text
+                    st.markdown(f"**No. KTP:** `{val('NoKTP')}`")
+                    st.markdown(f"**Tempat, Tanggal Lahir:** {val('Tempat lahir')}, {val('Tanggal Lahir')}")
+                    st.markdown(f"**Jenis Kelamin:** {val('Jenis Kelamin')}")
+                    st.markdown(f"**Agama:** {val('Agama')}")
+                    st.markdown(f"**Status Perkawinan:** {val('Status Perkawinan')}")
+                with c2:
+                    st.markdown(f"**Pendidikan Terakhir:** {val('Pendidikan Terakhir')}")
+                    st.markdown(f"**No. Handphone:** {val('Handphone')}")
+                    st.markdown(f"**Alamat Email:** {val('Alamat Email')}")
+                    st.markdown(f"**Nama Ibu Kandung:** {val('Nama Ibu Kandung')}")
+                    st.markdown(f"**Alamat KTP:** {val('Alamat')} RT {val('RT')}/RW {val('RW')}, Kel. {val('kelurahan')}, Kec. {val('kecamatan')}, {val('kotamadya')}, {val('propinsi')} ({val('Kode Pos')})")
+
+            with tab2:
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown(f"**Perusahaan:** {val('NAMA PERUSAHAAN')}")
+                    st.markdown(f"**Nama Client:** {val('Nama Client')}")
+                    st.markdown(f"**Nama Project:** {val('Nama Project')}")
+                    st.markdown(f"**Posisi:** {val('Posisi')}")
+                with c2:
+                    st.markdown(f"**Area CBS / Sub Area:** {val('Area CBS')} / {val('Sub Area')}")
+                    st.markdown(f"**Area Coverage:** {val('Area Coverage')}")
+                    st.markdown(f"**Outlet:** {val('Outlet')}")
+                    st.markdown(f"**Nama Team Leader (TL):** {val('Nama TL')}")
+
+            with tab3:
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown(f"**Tanggal Bergabung:** {val('Tanggal Bergabung')}")
+                    st.markdown(f"**Tanggal Kontrak:** {val('Tanggal Kontrak')}")
+                    st.markdown(f"**Berakhir Kontrak:** {val('Tanggal Berakhir Kontrak')}")
+                    st.markdown(f"**Tanggal Keluar & Alasan:** {val('Tanggal Keluar')} ({val('Alasan Keluar')})")
+                with c2:
+                    st.markdown(f"**No. Rekening:** `{val('No Rekening')}`")
+                    st.markdown(f"**Nama di Rekening:** {val('Nama Pada Nomer Rekening')}")
+                    st.markdown(f"**No. NPWP:** `{val('No NPWP')}`")
+                    st.markdown(f"**No. Jamsostek / BPJS:** {val('No Jamsostek')} / {val('No BPJS Kesehatan')}")
+
+else:
+    st.info("💡 Silakan ketik nama atau ID personil pada kotak pencarian di atas untuk memunculkan Form Identitas.")
+    with st.expander("Lihat Seluruh Tabel Database (Klik untuk membuka)"):
+        st.dataframe(df, use_container_width=True)
