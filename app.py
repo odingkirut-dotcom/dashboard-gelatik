@@ -34,12 +34,10 @@ def load_data_from_github():
     if resp.status_code == 200:
         file_data = resp.json()
         download_url = file_data.get("download_url")
-        # Tambahkan parameter acak agar tidak tersangkut cache CDN
         resp_dl = requests.get(f"{download_url}&t={time.time()}")
         file_decoded = resp_dl.content.decode("latin1")
         return pd.read_csv(io.StringIO(file_decoded), encoding="latin1")
     else:
-        # Fallback ke raw URL jika API rate limit
         raw_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}?t={time.time()}"
         return pd.read_csv(raw_url, encoding="latin1")
 
@@ -62,13 +60,14 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     st.session_state.form_version += 1
     st.rerun()
 
-# --- PENCARIAN TEKS EKSKLUSIF (KOLOM NAMA & ID) ---
+# --- PENCARIAN TEKS EKSKLUSIF (KOLOM NAMA & ID DENGAN AMAN) ---
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
 search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RIKA SITI RUKOYAH):", key="input_search_query")
 
-# Otomatis deteksi kolom nama dan ID secara presisi
-nama_col = next((col for col in df_master.columns if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), df_master.columns[1])
-id_col = next((col for col in df_master.columns if 'id' in str(col).lower() or 'personil' in str(col).lower()), df_master.columns[0])
+# Deteksi kolom nama dan ID secara aman dengan fallback anti IndexError
+cols_list = list(df_master.columns)
+nama_col = next((col for col in cols_list if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), cols_list[1] if len(cols_list) > 1 else cols_list[0])
+id_col = next((col for col in cols_list if 'id' in str(col).lower() or 'personil' in str(col).lower()), cols_list[0])
 
 # Reset pilihan jika kotak pencarian dikosongkan
 if not search_query:
@@ -148,7 +147,6 @@ if 'selected_id' in st.session_state:
                             "Accept": "application/vnd.github+json"
                         }
                         
-                        # 1. Ambil SHA dan konten terbaru langsung via GitHub REST API
                         resp_get = requests.get(api_url, headers=headers)
                         if resp_get.status_code != 200:
                             st.error(f"Gagal mengambil metadata file dari GitHub: {resp_get.text}")
@@ -171,7 +169,6 @@ if 'selected_id' in st.session_state:
                             
                         df_live = pd.read_csv(io.StringIO(file_decoded), encoding="latin1")
                         
-                        # 2. Cari baris berdasarkan ID personil pada data live
                         matched_live = df_live[df_live[id_col].astype(str) == active_id]
                         
                         if not matched_live.empty:
@@ -190,7 +187,6 @@ if 'selected_id' in st.session_state:
                                     else:
                                         df_live.loc[live_idx, col_name] = val
 
-                            # 3. Konversi ke string CSV, lalu encode ke Base64
                             updated_csv_str = df_live.to_csv(index=False, encoding="latin1")
                             updated_b64 = base64.b64encode(updated_csv_str.encode("latin1")).decode("utf-8")
                             
@@ -200,7 +196,6 @@ if 'selected_id' in st.session_state:
                                 "sha": current_sha
                             }
                             
-                            # 4. Kirim pembaruan menggunakan REST API PUT
                             resp_put = requests.put(api_url, headers=headers, json=payload)
                             if resp_put.status_code in [200, 201]:
                                 st.session_state.form_version += 1
