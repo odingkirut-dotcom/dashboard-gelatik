@@ -37,8 +37,9 @@ except Exception as e:
 
 df = st.session_state.df_data
 
-# Otomatis deteksi kolom nama utama
-nama_col = next((col for col in df.columns if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower()), df.columns[1])
+# Otomatis deteksi kolom nama dan ID secara presisi
+nama_col = next((col for col in df.columns if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), df.columns[1])
+id_col = next((col for col in df.columns if 'id' in str(col).lower() or 'personil' in str(col).lower()), df.columns[0])
 
 # Tombol muat ulang data terbaru
 if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
@@ -47,13 +48,13 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
         del st.session_state['df_data']
     st.rerun()
 
-# --- PENCARIAN PRESISI & AMAN ---
+# --- PENCARIAN KHUSUS HANYA PADA KOLOM NAMA & ID ---
 st.subheader("🔎 Cari Karyawan (Pencarian Teks / Pilih Langsung)")
 
 col_s1, col_s2 = st.columns(2)
 
 with col_s1:
-    search_query = st.text_input("Ketik Nama / ID (Contoh: RIKA SITI):")
+    search_query = st.text_input("Ketik Nama / ID (Contoh: RIKA SITI RUKOYAH):")
 
 with col_s2:
     text_cols = [c for c in df.columns if df[c].dtype == 'object']
@@ -67,15 +68,16 @@ hasil_cari = pd.DataFrame()
 idx_row = None
 
 if search_query:
-    # Memecah kata kunci (misal: "rika" dan "siti")
     keywords = search_query.strip().split()
     
-    # Filter ketat: baris harus mengandung KEDUA kata tersebut di dalam satu baris yang sama
+    # Pencarian HANYA difokuskan pada kolom Nama dan ID Personil
     mask = pd.Series(True, index=df.index)
-    df_str = df.astype(str)
+    target_cols = [str(nama_col), str(id_col)]
+    
     for kw in keywords:
-        kw_mask = df_str.apply(lambda row: row.str.contains(kw, case=False, na=False)).any(axis=1)
+        kw_mask = df[target_cols].astype(str).apply(lambda row: row.str.contains(kw, case=False, na=False)).any(axis=1)
         mask = mask & kw_mask
+        
     hasil_cari = df[mask]
 elif selected_dropdown != "-- Pilih Karyawan --":
     hasil_cari = df[df[sample_col].astype(str) == selected_dropdown]
@@ -163,7 +165,7 @@ if not hasil_cari.empty:
         st.dataframe(hasil_cari, use_container_width=True)
 else:
     if search_query:
-        st.warning("Data tidak ditemukan. Coba ketik nama yang lebih spesifik atau pilih langsung dari dropdown di sebelah kanan.")
+        st.warning("Data tidak ditemukan dari pencarian nama/ID. Coba pilih namanya langsung lewat kotak **Dropdown** di sebelah kanan.")
     else:
         st.info("💡 Ketik kata kunci pada kotak pencarian atau pilih nama langsung dari dropdown di sebelah kanan.")
         with st.expander("Lihat Seluruh Tabel Database Nasional"):
