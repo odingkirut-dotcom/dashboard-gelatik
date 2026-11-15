@@ -33,9 +33,6 @@ def load_data_from_github():
         
     if resp.status_code == 200:
         file_decoded = resp.content.decode("latin1")
-        # Validasi agar tidak membaca file yang rusak karena error 404
-        if "404: Not Found" in file_decoded[:50]:
-            raise Exception("File CSV di GitHub saat ini berisi teks error '404: Not Found'. Harap restore/perbaiki isi file CSV di GitHub terlebih dahulu.")
         df = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
         df.columns = df.columns.astype(str).str.strip()
         df = df.fillna("")
@@ -172,10 +169,6 @@ if 'selected_row_idx' in st.session_state:
                         else:
                             file_content_b64 = file_data["content"]
                             file_decoded = base64.b64decode(file_content_b64).decode("latin1")
-                        
-                        if "404: Not Found" in file_decoded[:50]:
-                            st.error("File CSV di GitHub sedang rusak (berisi 404). Perbaiki isi file CSV di GitHub terlebih dahulu.")
-                            st.stop()
                             
                         df_live = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
                         df_live.columns = df_live.columns.astype(str).str.strip()
