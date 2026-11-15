@@ -65,7 +65,7 @@ cols_list = list(df_master.columns)
 id_col = next((col for col in cols_list if 'id' in str(col).lower() or 'personil' in str(col).lower()), cols_list[0])
 nama_col = next((col for col in cols_list if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), cols_list[1] if len(cols_list) > 1 else cols_list[0])
 
-# --- PENCARIAN SUPER CERDAS & UNIVERSAL ---
+# --- PENCARIAN AMAN & KOMPATIBEL ---
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
 search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RIKA SITI RUKOYAH):", key="input_search_query")
 
@@ -79,14 +79,16 @@ hasil_cari = pd.DataFrame()
 if search_query:
     keywords = search_query.strip().lower().split()
     
-    # Gabungkan seluruh kolom per baris menjadi satu teks panjang untuk pencarian mutlak
-    row_strings = df_master.astype(str).agg(' '.join, axis=1).str.lower()
+    # Buat gabungan teks per baris dengan aman menggunakan list comprehension
+    row_texts = df_master.astype(str).values
+    match_indices = []
     
-    mask = pd.Series(True, index=df_master.index)
-    for kw in keywords:
-        mask = mask & row_strings.str.contains(kw, na=False)
-        
-    hasil_cari = df_master[mask]
+    for idx, row in enumerate(row_texts):
+        row_str = " ".join(row).lower()
+        if all(kw in row_str for kw in keywords):
+            match_indices.append(idx)
+            
+    hasil_cari = df_master.iloc[match_indices]
 
 # Logika Penanganan Hasil Pencarian
 if not hasil_cari.empty:
