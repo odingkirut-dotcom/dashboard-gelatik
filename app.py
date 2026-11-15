@@ -19,38 +19,31 @@ REPO_NAME = "odingkirut-dotcom/dashboard-gelatik"
 FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
 encoded_path = urllib.parse.quote(FILE_PATH)
-RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}"
+RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}?v={pd.Timestamp.now().timestamp()}"
 
-# Memuat SELURUH database nasional
-@st.cache_data(ttl=10)
+# Memuat SELURUH database nasional tanpa cache yang mengunci data lama
 def load_data_from_github():
     df = pd.read_csv(RAW_URL, encoding="latin1")
     return df
 
 try:
-    if 'df_data' not in st.session_state:
-        with st.spinner("Mengambil database nasional terbaru dari GitHub..."):
-            st.session_state.df_data = load_data_from_github()
+    with st.spinner("Mengambil database nasional terbaru dari GitHub..."):
+        df = load_data_from_github()
 except Exception as e:
     st.error(f"Gagal memuat data. Detail Error: {e}")
     st.stop()
 
-df = st.session_state.df_data
-
-# Otomatis deteksi kolom nama dan ID secara presisi
-nama_col = next((col for col in df.columns if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), df.columns[1])
-id_col = next((col for col in df.columns if 'id' in str(col).lower() or 'personil' in str(col).lower()), df.columns[0])
-
 # Tombol muat ulang data terbaru
 if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
-    st.cache_data.clear()
-    if 'df_data' in st.session_state:
-        del st.session_state['df_data']
     st.rerun()
 
 # --- PENCARIAN TEKS EKSKLUSIF (KOLOM NAMA & ID) ---
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
 search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RIKA SITI RUKOYAH):")
+
+# Otomatis deteksi kolom nama dan ID secara presisi
+nama_col = next((col for col in df.columns if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), df.columns[1])
+id_col = next((col for col in df.columns if 'id' in str(col).lower() or 'personil' in str(col).lower()), df.columns[0])
 
 # Menentukan baris yang dipilih berdasarkan input teks
 hasil_cari = pd.DataFrame()
@@ -78,7 +71,7 @@ if not hasil_cari.empty:
         curr_id = person.get(id_col, '-')
         curr_perusahaan = person.get('NAMA PERUSAHAAN', '-')
 
-        # Formulir Edit dengan Tampilan Seksi Rapi Berkelompok (2 Kolom) Tanpa Tab Tersembunyi
+        # Formulir Edit dengan Tampilan Seksi Rapi Berkelompok (2 Kolom)
         with st.form("form_edit_karyawan_modern"):
             st.markdown(f"### ✏️ Edit Data: **{curr_nama}**")
             st.info(f"🆔 **ID Personil:** {curr_id}  |  🏢 **Perusahaan:** {curr_perusahaan}")
@@ -87,7 +80,6 @@ if not hasil_cari.empty:
             edited_values = {}
             col_names = list(df.columns)
             
-            # Membagi kolom ke dalam 3 bagian kategori agar tetap rapi dibaca layaknya per tab, namun tampil sekaligus
             sec1_cols, sec2_cols, sec3_cols = [], [], []
             for col in col_names:
                 col_lower = str(col).lower()
@@ -120,14 +112,14 @@ if not hasil_cari.empty:
                     edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
 
             st.markdown("---")
-            # Bagian 3: Informasi Pribadi & Kontak Lainnya (Termasuk Nama Ibu Kandung)
+            # Bagian 3: Informasi Pribadi & Kontak Lainnya
             st.markdown("#### 📋 Informasi Pribadi & Kontak Lainnya")
             c1, c2 = st.columns(2)
             for i, col in enumerate(sec3_cols):
                 with (c1 if i % 2 == 0 else c2):
                     unique_key = f"sec3_{i}_{col}"
                     val_data = person.get(col, '')
-                    val_str = '' if pd.isna(val_data) else str(val_data)
+                    val_str = '' if pd.isna(val_data) else str(val_str)
                     edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
 
             st.markdown("---")
@@ -136,23 +128,26 @@ if not hasil_cari.empty:
             if submitted:
                 with st.spinner("Menyimpan perubahan langsung ke file CSV di GitHub..."):
                     try:
+                        # Ambil data terbaru langsung dari github sebelum melakukan update row
+                        df_live = load_data_from_github()
+                        
                         for col_name, val in edited_values.items():
-                            if st.session_state.df_data[col_name].dtype in ['float64', 'int64']:
+                            if df_live[col_name].dtype in ['float64', 'int64']:
                                 if val.strip() == '':
-                                    st.session_state.df_data.loc[idx_row, col_name] = float('nan')
+                                    df_live.loc[idx_row, col_name] = float('nan')
                                 else:
                                     try:
-                                        st.session_state.df_data.loc[idx_row, col_name] = float(val) if '.' in val else int(val)
+                                        df_live.loc[idx_row, col_name] = float(val) if '.' in val else int(val)
                                     except:
-                                        st.session_state.df_data.loc[idx_row, col_name] = val
+                                        df_live.loc[idx_row, col_name] = val
                             else:
-                                st.session_state.df_data.loc[idx_row, col_name] = val
+                                df_live.loc[idx_row, col_name] = val
 
                         g = Github(st.secrets["GITHUB_TOKEN"])
                         repo = g.get_repo(REPO_NAME)
                         file_content = repo.get_contents(FILE_PATH)
                         
-                        updated_csv_bytes = st.session_state.df_data.to_csv(index=False, encoding="latin1").encode("latin1")
+                        updated_csv_bytes = df_live.to_csv(index=False, encoding="latin1").encode("latin1")
                         repo.update_file(
                             path=FILE_PATH,
                             message=f"Update data nasional baris {idx_row}",
@@ -160,8 +155,6 @@ if not hasil_cari.empty:
                             sha=file_content.sha
                         )
                         
-                        st.cache_data.clear()
-                        del st.session_state['df_data']
                         st.success("✅ Perubahan berhasil disimpan permanen ke file CSV GitHub!")
                         st.rerun()
                     except Exception as e:
