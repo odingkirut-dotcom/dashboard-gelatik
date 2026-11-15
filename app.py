@@ -44,7 +44,7 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
         del st.session_state['df_data']
     st.rerun()
 
-# --- METODE GANDA: PENCARIAN TEKS ATAU PILIH LANGSUNG DARI DROPDOWN ---
+# --- PENCARIAN TINGKAT LANJUT & AMAN ---
 st.subheader("🔎 Cari Karyawan (Pencarian Teks / Pilih Langsung)")
 
 col_s1, col_s2 = st.columns(2)
@@ -53,12 +53,10 @@ with col_s1:
     search_query = st.text_input("Ketik Nama / ID (Contoh: RUKOYAH):")
 
 with col_s2:
-    # Opsi alternatif: Pilih langsung dari daftar (mengambil gabungan kolom teks utama)
-    # Mencari kolom yang berisi teks nama
+    # Aman dari IndexError: mendeteksi kolom teks pertama yang tersedia
     text_cols = [c for c in df.columns if df[c].dtype == 'object']
-    sample_col = text_cols[1] if len(text_cols) > 1 else text_cols[0]
+    sample_col = text_cols[0] if len(text_cols) > 0 else df.columns[0]
     
-    # Ambil list unik untuk dropdown (diurutkan)
     all_names = sorted([str(x) for x in df[sample_col].dropna().unique() if str(x).strip() != ''])
     selected_dropdown = st.selectbox("Atau Pilih Langsung dari Daftar:", options=["-- Pilih Karyawan --"] + all_names)
 
@@ -84,7 +82,7 @@ if not hasil_cari.empty:
         person = df.loc[idx_row]
         perusahaan_val = person.get('NAMA PERUSAHAAN', 'Tidak diketahui')
 
-        st.success(f"✅ Data dipilih/ditemukan! (Perusahaan: **{perusahaan_val}** | Baris Index: {idx_row})")
+        st.success(f"✅ Data ditemukan! (Perusahaan: **{perusahaan_val}** | Baris Index: {idx_row})")
 
         # Formulir Edit dengan Tampilan Tab Modern & Kompak
         with st.form("form_edit_karyawan_modern"):
