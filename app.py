@@ -88,14 +88,14 @@ if not hasil_cari.empty:
             
             col_names = list(df.columns)
             
-            # Memisahkan kolom ke masing-masing kelompok tab secara konsisten
+            # Pemisahan kolom yang bersih agar Nama Ibu Kandung tidak salah masuk tab
             t1_cols, t2_cols, t3_cols = [], [], []
             for col in col_names:
                 col_lower = str(col).lower()
-                if any(k in col_lower for k in ['nama', 'id', 'nik', 'ktp', 'project', 'posisi', 'area', 'sub', 'tl', 'perusahaan']):
-                    t1_cols.append(col)
-                elif any(k in col_lower for k in ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kotamadya', 'propinsi', 'pos', 'domisili']):
+                if any(k in col_lower for k in ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kotamadya', 'propinsi', 'pos', 'domisili']):
                     t2_cols.append(col)
+                elif any(k in col_lower for k in ['nama', 'id', 'nik', 'ktp', 'project', 'posisi', 'area', 'sub', 'tl', 'perusahaan']) and 'ibu' not in col_lower:
+                    t1_cols.append(col)
                 else:
                     t3_cols.append(col)
 
@@ -128,7 +128,7 @@ if not hasil_cari.empty:
                     with (c1 if i % 2 == 0 else c2):
                         unique_key = f"t3_{i}_{col}"
                         val_data = person.get(col, '')
-                        val_str = '' if pd.isna(val_data) else str(val_data)
+                        val_str = '' if pd.isna(val_data) else str(val_str)
                         edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
 
             st.markdown("---")
