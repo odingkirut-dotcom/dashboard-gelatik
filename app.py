@@ -74,14 +74,12 @@ if not hasil_cari.empty:
         idx_row = hasil_cari.index[0]
         person = df.loc[idx_row]
 
-        # Mengambil nilai Nama, ID Personil, dan Perusahaan untuk ditampilkan di atas form
         curr_nama = person.get(nama_col, '-')
         curr_id = person.get(id_col, '-')
         curr_perusahaan = person.get('NAMA PERUSAHAAN', '-')
 
         # Formulir Edit dengan Tampilan Tab Modern & Kompak
         with st.form("form_edit_karyawan_modern"):
-            # Menampilkan Nama, ID, dan Perusahaan secara jelas di bagian paling atas form
             st.markdown(f"### ✏️ Edit Data: **{curr_nama}**")
             st.info(f"🆔 **ID Personil:** {curr_id}  |  🏢 **Perusahaan:** {curr_perusahaan}")
             st.caption("Ubah data melalui tab di bawah ini, lalu klik tombol Simpan di bagian bawah.")
@@ -99,7 +97,9 @@ if not hasil_cari.empty:
                     if any(k in col_lower for k in ['nama', 'id', 'nik', 'ktp', 'project', 'posisi', 'area', 'sub', 'tl', 'perusahaan']):
                         with (c1 if i % 2 == 0 else c2):
                             unique_key = f"t1_{i}_{col}"
-                            edited_values[col] = st.text_input(str(col), value=str(person.get(col, '')), key=unique_key)
+                            val_data = person.get(col, '')
+                            val_str = '' if pd.isna(val_data) else str(val_data)
+                            edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
 
             with tab2:
                 st.markdown("##### Informasi Alamat & Lokasi")
@@ -109,7 +109,9 @@ if not hasil_cari.empty:
                     if any(k in col_lower for k in ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kotamadya', 'propinsi', 'pos', 'domisili']):
                         with (c1 if i % 2 == 0 else c2):
                             unique_key = f"t2_{i}_{col}"
-                            edited_values[col] = st.text_input(str(col), value=str(person.get(col, '')), key=unique_key)
+                            val_data = person.get(col, '')
+                            val_str = '' if pd.isna(val_data) else str(val_data)
+                            edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
 
             with tab3:
                 st.markdown("##### Informasi Pribadi & Kontak Lainnya")
@@ -120,7 +122,9 @@ if not hasil_cari.empty:
                 for i, col in enumerate(remaining_cols):
                     with (c1 if i % 2 == 0 else c2):
                         unique_key = f"t3_{i}_{col}"
-                        edited_values[col] = st.text_input(str(col), value=str(person.get(col, '')), key=unique_key)
+                        val_data = person.get(col, '')
+                        val_str = '' if pd.isna(val_data) else str(val_data)
+                        edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
 
             st.markdown("---")
             submitted = st.form_submit_button("💾 Simpan Perubahan Secara Permanen ke GitHub", use_container_width=True)
@@ -129,7 +133,17 @@ if not hasil_cari.empty:
                 with st.spinner("Menyimpan perubahan langsung ke file CSV di GitHub..."):
                     try:
                         for col_name, val in edited_values.items():
-                            st.session_state.df_data.loc[idx_row, col_name] = val
+                            # Konversi balik tipe data numerik jika kolom aslinya berupa angka/float
+                            if st.session_state.df_data[col_name].dtype in ['float64', 'int64']:
+                                if val.strip() == '':
+                                    st.session_state.df_data.loc[idx_row, col_name] = float('nan')
+                                else:
+                                    try:
+                                        st.session_state.df_data.loc[idx_row, col_name] = float(val) if '.' in val else int(val)
+                                    except:
+                                        st.session_state.df_data.loc[idx_row, col_name] = val
+                            else:
+                                st.session_state.df_data.loc[idx_row, col_name] = val
 
                         g = Github(st.secrets["GITHUB_TOKEN"])
                         repo = g.get_repo(REPO_NAME)
