@@ -4,7 +4,6 @@ from github import Github
 import io
 import urllib.parse
 
-# Konfigurasi Halaman Web
 st.set_page_config(
     page_title="Dashboard & Editor PT. Gelatik Supra",
     page_icon="🦅",
@@ -14,14 +13,12 @@ st.set_page_config(
 st.title("🦅 Dashboard & Editor Data - PT. Gelatik Supra")
 st.markdown("Kelola, cari, dan edit data personil. Perubahan akan **langsung tersimpan secara permanen ke file CSV di GitHub**.")
 
-# --- PENGATURAN GITHUB ---
 REPO_NAME = "odingkirut-dotcom/dashboard-gelatik"
 FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
 encoded_path = urllib.parse.quote(FILE_PATH)
 RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}"
 
-# Fungsi membaca data langsung via URL mentah
 @st.cache_data(ttl=10)
 def load_data_from_github():
     df = pd.read_csv(RAW_URL, encoding="latin1")
@@ -41,7 +38,6 @@ def load_data_from_github():
         
     return df_gelatik
 
-# Fungsi khusus untuk menyimpan perubahan permanen ke GitHub
 def save_data_to_github(df_updated_gelatik, commit_message):
     g = Github(st.secrets["GITHUB_TOKEN"])
     repo = g.get_repo(REPO_NAME)
@@ -49,7 +45,6 @@ def save_data_to_github(df_updated_gelatik, commit_message):
     file_content = repo.get_contents(FILE_PATH)
     df_full = pd.read_csv(io.BytesIO(file_content.decoded_content), encoding="latin1")
     
-    # Hapus kolom helper sementara jika ada
     if 'NAMA PERUSAHAAN_clean' in df_updated_gelatik.columns:
         df_updated_gelatik = df_updated_gelatik.drop(columns=['NAMA PERUSAHAAN_clean'])
         
@@ -63,7 +58,6 @@ def save_data_to_github(df_updated_gelatik, commit_message):
         sha=file_content.sha
     )
 
-# Memuat data ke Session State
 try:
     if 'df_data' not in st.session_state:
         with st.spinner("Mengambil database terbaru dari GitHub..."):
@@ -74,29 +68,32 @@ except Exception as e:
 
 df = st.session_state.df_data
 
-# Tombol muat ulang data terbaru
 if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     st.cache_data.clear()
     if 'df_data' in st.session_state:
         del st.session_state['df_data']
     st.rerun()
 
-# --- PENCARIAN & KONDISI TAMPILAN EDIT ---
 st.subheader("🔎 Cari Karyawan untuk Dilihat / Diedit")
-search_query = st.text_input("Ketik Nama Lengkap atau ID Personil (Contoh: Rika atau Rika Siti):")
+search_query = st.text_input("Ketik Kata Kunci Nama (Contoh: Ruko atau Rika):")
 
 if search_query:
+    # Pencarian super fleksibel: mengabaikan huruf besar/kecil & spasi berlebih
+    query_clean = search_query.strip()
     mask = (
-        df['Nama'].str.contains(search_query.strip(), case=False, na=False) |
-        df['ID Personil'].astype(str).str.contains(search_query.strip(), case=False, na=False)
+        df['Nama'].astype(str).str.contains(query_clean, case=False, na=False) |
+        df['ID Personil'].astype(str).str.contains(query_clean, case=False, na=False)
     )
     hasil_cari = df[mask]
 
     if len(hasil_cari) == 0:
-        st.warning("Data tidak ditemukan. Periksa kembali ejaan nama.")
-    
+        st.warning("Data tidak ditemukan. Coba gunakan kata kunci yang lebih pendek (misal: 'Rukoyah' atau 'Rika').")
+        
+        # Opsi bantuan: tampilkan beberapa nama teratas agar tahu formatnya
+        with st.expander("Lihat contoh beberapa nama karyawan di database"):
+            st.dataframe(df[['ID Personil', 'Nama']].head(10), use_container_width=True)
+            
     elif len(hasil_cari) == 1:
-        # KONDISI 1: Tepat satu nama ditemukan -> Munculkan form edit lengkap
         idx_row = hasil_cari.index[0]
         person = df.loc[idx_row]
 
@@ -104,8 +101,6 @@ if search_query:
 
         with st.form("form_edit_karyawan"):
             st.markdown("### ✏️ Form Edit Informasi Karyawan")
-            st.caption("Ubah data di bawah ini sesuai kebutuhan, lalu klik tombol Simpan.")
-
             c1, c2 = st.columns(2)
             with c1:
                 new_nama = st.text_input("Nama Lengkap", value=str(person.get('Nama', '')))
@@ -147,15 +142,13 @@ if search_query:
                         st.rerun()
                     except Exception as e:
                         st.error(f"Gagal menyimpan ke GitHub: {e}")
-    
     else:
-        # KONDISI 2: Banyak nama ditemukan -> Hanya tampilkan tabel ringkasan saja
-        st.info(f"Ditemukan **{len(hasil_cari)} data** yang mirip. Silakan ketik nama lebih lengkap agar form edit muncul:")
+        st.info(f"Ditemukan **{len(hasil_cari)} data** yang mirip. Silakan pilih dari tabel ringkasan di bawah:")
         st.dataframe(
             hasil_cari[['ID Personil', 'Nama', 'Nama Project', 'Area CBS', 'Handphone']], 
             use_container_width=True
         )
 else:
-    st.info("💡 Ketik nama lengkap karyawan atau ID personil pada kotak pencarian di atas untuk melihat detail dan mengedit informasinya.")
+    st.info("💡 Ketik nama karyawan pada kotak pencarian di atas (misal: cukup ketik 'Rukoyah').")
     with st.expander("Lihat Seluruh Tabel Data PT. Gelatik Supra"):
         st.dataframe(df.drop(columns=['NAMA PERUSAHAAN_clean'], errors='ignore'), use_container_width=True)
