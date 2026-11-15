@@ -19,22 +19,29 @@ REPO_NAME = "odingkirut-dotcom/dashboard-gelatik"
 FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
 encoded_path = urllib.parse.quote(FILE_PATH)
-RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}?v={pd.Timestamp.now().timestamp()}"
+RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}"
 
-# Memuat SELURUH database nasional tanpa cache yang mengunci data lama
+# Memuat data dengan cache yang stabil
+@st.cache_data(ttl=5)
 def load_data_from_github():
     df = pd.read_csv(RAW_URL, encoding="latin1")
     return df
 
 try:
-    with st.spinner("Mengambil database nasional terbaru dari GitHub..."):
-        df = load_data_from_github()
+    if 'df_data' not in st.session_state:
+        with st.spinner("Mengambil database nasional terbaru dari GitHub..."):
+            st.session_state.df_data = load_data_from_github()
 except Exception as e:
     st.error(f"Gagal memuat data. Detail Error: {e}")
     st.stop()
 
+df = st.session_state.df_data
+
 # Tombol muat ulang data terbaru
 if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
+    st.cache_data.clear()
+    if 'df_data' in st.session_state:
+        del st.session_state['df_data']
     st.rerun()
 
 # --- PENCARIAN TEKS EKSKLUSIF (KOLOM NAMA & ID) ---
@@ -47,7 +54,6 @@ id_col = next((col for col in df.columns if 'id' in str(col).lower() or 'personi
 
 # Menentukan baris yang dipilih berdasarkan input teks
 hasil_cari = pd.DataFrame()
-idx_row = None
 
 if search_query:
     keywords = search_query.strip().split()
@@ -64,12 +70,15 @@ if search_query:
 # Logika Tampilan Form Edit jika data ditemukan / dipilih
 if not hasil_cari.empty:
     if len(hasil_cari) == 1:
-        idx_row = hasil_cari.index[0]
-        person = df.loc[idx_row]
+        target_row_idx = hasil_cari.index[0]
+        person = df.loc[target_row_idx]
 
         curr_nama = person.get(nama_col, '-')
         curr_id = person.get(id_col, '-')
         curr_perusahaan = person.get('NAMA PERUSAHAAN', '-')
+
+        # Simpan ID unik di session state untuk keamanan pencarian baris saat submit
+        st.session_state['active_id'] = curr_id
 
         # Formulir Edit dengan Tampilan Seksi Rapi Berkelompok (2 Kolom)
         with st.form("form_edit_karyawan_modern"):
@@ -128,35 +137,41 @@ if not hasil_cari.empty:
             if submitted:
                 with st.spinner("Menyimpan perubahan langsung ke file CSV di GitHub..."):
                     try:
-                        # Ambil data terbaru langsung dari github sebelum melakukan update row
-                        df_live = load_data_from_github()
-                        
-                        for col_name, val in edited_values.items():
-                            if df_live[col_name].dtype in ['float64', 'int64']:
-                                if val.strip() == '':
-                                    df_live.loc[idx_row, col_name] = float('nan')
+                        # Cari ulang baris berdasarkan ID unik yang sedang aktif agar akurat 100%
+                        matched_rows = st.session_state.df_data[st.session_state.df_data[id_col].astype(str) == str(st.session_state.get('active_id'))]
+                        if not matched_rows.empty:
+                            target_idx = matched_rows.index[0]
+                            
+                            for col_name, val in edited_values.items():
+                                if st.session_state.df_data[col_name].dtype in ['float64', 'int64']:
+                                    if val.strip() == '':
+                                        st.session_state.df_data.loc[target_idx, col_name] = float('nan')
+                                    else:
+                                        try:
+                                            st.session_state.df_data.loc[target_idx, col_name] = float(val) if '.' in val else int(val)
+                                        except:
+                                            st.session_state.df_data.loc[target_idx, col_name] = val
                                 else:
-                                    try:
-                                        df_live.loc[idx_row, col_name] = float(val) if '.' in val else int(val)
-                                    except:
-                                        df_live.loc[idx_row, col_name] = val
-                            else:
-                                df_live.loc[idx_row, col_name] = val
+                                    st.session_state.df_data.loc[target_idx, col_name] = val
 
-                        g = Github(st.secrets["GITHUB_TOKEN"])
-                        repo = g.get_repo(REPO_NAME)
-                        file_content = repo.get_contents(FILE_PATH)
-                        
-                        updated_csv_bytes = df_live.to_csv(index=False, encoding="latin1").encode("latin1")
-                        repo.update_file(
-                            path=FILE_PATH,
-                            message=f"Update data nasional baris {idx_row}",
-                            content=updated_csv_bytes,
-                            sha=file_content.sha
-                        )
-                        
-                        st.success("✅ Perubahan berhasil disimpan permanen ke file CSV GitHub!")
-                        st.rerun()
+                            g = Github(st.secrets["GITHUB_TOKEN"])
+                            repo = g.get_repo(REPO_NAME)
+                            file_content = repo.get_contents(FILE_PATH)
+                            
+                            updated_csv_bytes = st.session_state.df_data.to_csv(index=False, encoding="latin1").encode("latin1")
+                            repo.update_file(
+                                path=FILE_PATH,
+                                message=f"Update data nasional ID {curr_id}",
+                                content=updated_csv_bytes,
+                                sha=file_content.sha
+                            )
+                            
+                            st.cache_data.clear()
+                            del st.session_state['df_data']
+                            st.success("✅ Perubahan berhasil disimpan permanen ke file CSV GitHub!")
+                            st.rerun()
+                        else:
+                            st.error("Gagal menemukan baris data berdasarkan ID aktif.")
                     except Exception as e:
                         st.error(f"Gagal menyimpan ke GitHub: {e}")
     else:
