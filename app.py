@@ -74,9 +74,16 @@ if not hasil_cari.empty:
         idx_row = hasil_cari.index[0]
         person = df.loc[idx_row]
 
-        # Formulir Edit dengan Tampilan Tab Modern & Kompak (Pesan sukses/status dihapus)
+        # Mengambil nilai Nama, ID Personil, dan Perusahaan untuk ditampilkan di atas form
+        curr_nama = person.get(nama_col, '-')
+        curr_id = person.get(id_col, '-')
+        curr_perusahaan = person.get('NAMA PERUSAHAAN', '-')
+
+        # Formulir Edit dengan Tampilan Tab Modern & Kompak
         with st.form("form_edit_karyawan_modern"):
-            st.markdown("### ✏️ Form Edit Informasi Karyawan")
+            # Menampilkan Nama, ID, dan Perusahaan secara jelas di bagian paling atas form
+            st.markdown(f"### ✏️ Edit Data: **{curr_nama}**")
+            st.info(f"🆔 **ID Personil:** {curr_id}  |  🏢 **Perusahaan:** {curr_perusahaan}")
             st.caption("Ubah data melalui tab di bawah ini, lalu klik tombol Simpan di bagian bawah.")
 
             tab1, tab2, tab3 = st.tabs(["👤 Informasi Utama & Pekerjaan", "🏠 Alamat & Domisili", "📋 Data Lainnya"])
