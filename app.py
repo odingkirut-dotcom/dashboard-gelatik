@@ -60,7 +60,7 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     st.session_state.form_version += 1
     st.rerun()
 
-# --- PENCARIAN TEKS EKSKLUSIF (KOLOM NAMA & ID DENGAN AMAN) ---
+# --- PENCARIAN TEKS EKSKLUSIF (KOLOM NAMA & ID FLEKSIBEL) ---
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
 search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RIKA SITI RUKOYAH):", key="input_search_query")
 
@@ -77,14 +77,10 @@ if not search_query:
 hasil_cari = pd.DataFrame()
 
 if search_query:
-    keywords = search_query.strip().split()
-    mask = pd.Series(True, index=df_master.index)
+    q = search_query.strip()
     target_cols = [str(nama_col), str(id_col)]
-    
-    for kw in keywords:
-        kw_mask = df_master[target_cols].astype(str).apply(lambda row: row.str.contains(kw, case=False, na=False)).any(axis=1)
-        mask = mask & kw_mask
-        
+    # Pencarian fleksibel mencocokkan frasa secara utuh pada kolom Nama atau ID
+    mask = df_master[target_cols].astype(str).apply(lambda row: row.str.contains(q, case=False, na=False)).any(axis=1)
     hasil_cari = df_master[mask]
 
 # Logika Penanganan Hasil Pencarian
@@ -95,7 +91,7 @@ if not hasil_cari.empty:
         curr_id = str(person.get(id_col, '-'))
         st.session_state['selected_id'] = curr_id
     else:
-        st.warning(f"Ditemukan **{len(hasil_cari)} data** yang cocok dengan kata kunci **'{search_query}'**. Ketik nama lebih lengkap atau spesifik agar langsung menuju form edit:")
+        st.warning(f"Ditemukan **{len(hasil_cari)} data** yang cocok dengan kata kunci **'{search_query}'**. Silakan pilih atau ketik lebih spesifik:")
         st.dataframe(hasil_cari[[id_col, nama_col, 'NAMA PERUSAHAAN'] if 'NAMA PERUSAHAAN' in df_master.columns else [id_col, nama_col]], use_container_width=True)
         if 'selected_id' in st.session_state:
             del st.session_state['selected_id']
