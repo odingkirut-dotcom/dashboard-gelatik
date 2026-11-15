@@ -82,44 +82,49 @@ if not hasil_cari.empty:
         with st.form("form_edit_karyawan_modern"):
             st.markdown(f"### ✏️ Edit Data: **{curr_nama}**")
             st.info(f"🆔 **ID Personil:** {curr_id}  |  🏢 **Perusahaan:** {curr_perusahaan}")
-            st.caption("Ubah data melalui tab di bawah ini, lalu klik tombol Simpan di bagian bawah.")
+            st.caption("Ubah data di tab manapun, lalu klik tombol Simpan di bawah untuk menyimpan seluruh perubahan.")
 
             tab1, tab2, tab3 = st.tabs(["👤 Informasi Utama & Pekerjaan", "🏠 Alamat & Domisili", "📋 Data Lainnya"])
             
-            edited_values = {}
             col_names = list(df.columns)
             
+            # Memisahkan kolom ke masing-masing kelompok tab secara konsisten
+            t1_cols, t2_cols, t3_cols = [], [], []
+            for col in col_names:
+                col_lower = str(col).lower()
+                if any(k in col_lower for k in ['nama', 'id', 'nik', 'ktp', 'project', 'posisi', 'area', 'sub', 'tl', 'perusahaan']):
+                    t1_cols.append(col)
+                elif any(k in col_lower for k in ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kotamadya', 'propinsi', 'pos', 'domisili']):
+                    t2_cols.append(col)
+                else:
+                    t3_cols.append(col)
+
+            edited_values = {}
+
             with tab1:
                 st.markdown("##### Atribut Utama & Pekerjaan")
                 c1, c2 = st.columns(2)
-                for i, col in enumerate(col_names):
-                    col_lower = str(col).lower()
-                    if any(k in col_lower for k in ['nama', 'id', 'nik', 'ktp', 'project', 'posisi', 'area', 'sub', 'tl', 'perusahaan']):
-                        with (c1 if i % 2 == 0 else c2):
-                            unique_key = f"t1_{i}_{col}"
-                            val_data = person.get(col, '')
-                            val_str = '' if pd.isna(val_data) else str(val_data)
-                            edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
+                for i, col in enumerate(t1_cols):
+                    with (c1 if i % 2 == 0 else c2):
+                        unique_key = f"t1_{i}_{col}"
+                        val_data = person.get(col, '')
+                        val_str = '' if pd.isna(val_data) else str(val_data)
+                        edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
 
             with tab2:
                 st.markdown("##### Informasi Alamat & Lokasi")
                 c1, c2 = st.columns(2)
-                for i, col in enumerate(col_names):
-                    col_lower = str(col).lower()
-                    if any(k in col_lower for k in ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kotamadya', 'propinsi', 'pos', 'domisili']):
-                        with (c1 if i % 2 == 0 else c2):
-                            unique_key = f"t2_{i}_{col}"
-                            val_data = person.get(col, '')
-                            val_str = '' if pd.isna(val_data) else str(val_data)
-                            edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
+                for i, col in enumerate(t2_cols):
+                    with (c1 if i % 2 == 0 else c2):
+                        unique_key = f"t2_{i}_{col}"
+                        val_data = person.get(col, '')
+                        val_str = '' if pd.isna(val_data) else str(val_data)
+                        edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
 
             with tab3:
                 st.markdown("##### Informasi Pribadi & Kontak Lainnya")
                 c1, c2 = st.columns(2)
-                assigned_cols = list(edited_values.keys())
-                remaining_cols = [c for c in col_names if c not in assigned_cols]
-                
-                for i, col in enumerate(remaining_cols):
+                for i, col in enumerate(t3_cols):
                     with (c1 if i % 2 == 0 else c2):
                         unique_key = f"t3_{i}_{col}"
                         val_data = person.get(col, '')
@@ -133,7 +138,6 @@ if not hasil_cari.empty:
                 with st.spinner("Menyimpan perubahan langsung ke file CSV di GitHub..."):
                     try:
                         for col_name, val in edited_values.items():
-                            # Konversi balik tipe data numerik jika kolom aslinya berupa angka/float
                             if st.session_state.df_data[col_name].dtype in ['float64', 'int64']:
                                 if val.strip() == '':
                                     st.session_state.df_data.loc[idx_row, col_name] = float('nan')
