@@ -59,7 +59,6 @@ idx_row = None
 if search_query:
     keywords = search_query.strip().split()
     
-    # Pencarian HANYA difokuskan pada kolom Nama dan ID Personil
     mask = pd.Series(True, index=df.index)
     target_cols = [str(nama_col), str(id_col)]
     
@@ -74,12 +73,8 @@ if not hasil_cari.empty:
     if len(hasil_cari) == 1:
         idx_row = hasil_cari.index[0]
         person = df.loc[idx_row]
-        perusahaan_val = person.get('NAMA PERUSAHAAN', 'Tidak diketahui')
-        nama_val = person.get(nama_col, 'Karyawan')
 
-        st.success(f"✅ Ditemukan: **{nama_val}** (Perusahaan: **{perusahaan_val}** | Baris Index: {idx_row})")
-
-        # Formulir Edit dengan Tampilan Tab Modern & Kompak
+        # Formulir Edit dengan Tampilan Tab Modern & Kompak (Pesan sukses/status dihapus)
         with st.form("form_edit_karyawan_modern"):
             st.markdown("### ✏️ Form Edit Informasi Karyawan")
             st.caption("Ubah data melalui tab di bawah ini, lalu klik tombol Simpan di bagian bawah.")
