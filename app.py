@@ -48,22 +48,11 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
         del st.session_state['df_data']
     st.rerun()
 
-# --- PENCARIAN KHUSUS HANYA PADA KOLOM NAMA & ID ---
-st.subheader("🔎 Cari Karyawan (Pencarian Teks / Pilih Langsung)")
+# --- PENCARIAN TEKS EKSKLUSIF (KOLOM NAMA & ID) ---
+st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
+search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RIKA SITI RUKOYAH):")
 
-col_s1, col_s2 = st.columns(2)
-
-with col_s1:
-    search_query = st.text_input("Ketik Nama / ID (Contoh: RIKA SITI RUKOYAH):")
-
-with col_s2:
-    text_cols = [c for c in df.columns if df[c].dtype == 'object']
-    sample_col = text_cols[0] if len(text_cols) > 0 else df.columns[0]
-    
-    all_names = sorted([str(x) for x in df[sample_col].dropna().unique() if str(x).strip() != ''])
-    selected_dropdown = st.selectbox("Atau Pilih Langsung dari Daftar:", options=["-- Pilih Karyawan --"] + all_names)
-
-# Menentukan baris yang dipilih berdasarkan input teks atau dropdown
+# Menentukan baris yang dipilih berdasarkan input teks
 hasil_cari = pd.DataFrame()
 idx_row = None
 
@@ -79,8 +68,6 @@ if search_query:
         mask = mask & kw_mask
         
     hasil_cari = df[mask]
-elif selected_dropdown != "-- Pilih Karyawan --":
-    hasil_cari = df[df[sample_col].astype(str) == selected_dropdown]
 
 # Logika Tampilan Form Edit jika data ditemukan / dipilih
 if not hasil_cari.empty:
@@ -165,8 +152,8 @@ if not hasil_cari.empty:
         st.dataframe(hasil_cari, use_container_width=True)
 else:
     if search_query:
-        st.warning("Data tidak ditemukan dari pencarian nama/ID. Coba pilih namanya langsung lewat kotak **Dropdown** di sebelah kanan.")
+        st.warning("Data tidak ditemukan dari pencarian nama/ID. Periksa kembali ejaan kata kunci.")
     else:
-        st.info("💡 Ketik kata kunci pada kotak pencarian atau pilih nama langsung dari dropdown di sebelah kanan.")
+        st.info("💡 Ketik nama karyawan atau ID pada kotak pencarian di atas untuk mulai mencari.")
         with st.expander("Lihat Seluruh Tabel Database Nasional"):
             st.dataframe(df, use_container_width=True)
