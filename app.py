@@ -155,14 +155,16 @@ if 'selected_id' in st.session_state:
                                     else:
                                         df_live.loc[live_idx, col_name] = val
 
-                            # 4. Konversi ke string CSV standar yang didukung PyGithub
+                            # 4. Konversi ke string CSV standar
                             updated_csv_str = df_live.to_csv(index=False, encoding="latin1")
                             
+                            # 5. Kirim update dengan menentukan encoding secara eksplisit ("utf-8")
                             repo.update_file(
                                 path=FILE_PATH,
                                 message=f"Update data nasional ID {curr_id}",
                                 content=updated_csv_str,
-                                sha=current_sha
+                                sha=current_sha,
+                                encoding="utf-8"
                             )
                             
                             st.session_state.form_version += 1
