@@ -20,9 +20,8 @@ FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
 encoded_path = urllib.parse.quote(FILE_PATH)
 
-# Memuat data terbaru dari GitHub dengan anti-cache timestamp agar selalu fresh
+# Memuat data terbaru dari GitHub dengan anti-cache timestamp
 def load_data_from_github():
-    # Tambahkan parameter waktu agar CDN GitHub tidak memberikan data lama (cache)
     raw_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}?t={time.time()}"
     df = pd.read_csv(raw_url, encoding="latin1")
     return df
@@ -88,7 +87,6 @@ if not hasil_cari.empty:
 if 'selected_id' in st.session_state:
     active_id = st.session_state['selected_id']
     
-    # Ambil data paling fresh dari GitHub
     try:
         df_fresh = load_data_from_github()
     except:
@@ -104,7 +102,6 @@ if 'selected_id' in st.session_state:
         curr_id = str(person.get(id_col, '-'))
         curr_perusahaan = str(person.get('NAMA PERUSAHAAN', '-'))
 
-        # Formulir Edit dengan Key Dinamis berbasis Version
         form_key = f"form_edit_{active_id}_{st.session_state.form_version}"
         with st.form(form_key):
             st.markdown(f"### ✏️ Edit Data: **{curr_nama}**")
@@ -128,7 +125,19 @@ if 'selected_id' in st.session_state:
             if submitted:
                 with st.spinner("Menyimpan perubahan langsung ke GitHub..."):
                     try:
-                        df_live = load_data_from_github()
+                        # 1. Hubungkan ke GitHub repository
+                        g = Github(st.secrets["GITHUB_TOKEN"])
+                        repo = g.get_repo(REPO_NAME)
+                        
+                        # 2. AMBIL SHA DAN ISI FILE TERBARU LANGSUNG DARI SERVER GITHUB (Mencegah Conflict/SHA Mismatch)
+                        file_content = repo.get_contents(FILE_PATH)
+                        current_sha = file_content.sha
+                        
+                        # Decode isi file langsung dari GitHub
+                        file_decoded = file_content.decoded_content.decode("latin1")
+                        df_live = pd.read_csv(pd.io.common.StringIO(file_decoded), encoding="latin1")
+                        
+                        # 3. Cari baris berdasarkan ID personil pada data live GitHub
                         matched_live = df_live[df_live[id_col].astype(str) == active_id]
                         
                         if not matched_live.empty:
@@ -146,23 +155,16 @@ if 'selected_id' in st.session_state:
                                 else:
                                     df_live.loc[live_idx, col_name] = val
 
-                            # Kirim update ke GitHub via PyGithub
-                            g = Github(st.secrets["GITHUB_TOKEN"])
-                            repo = g.get_repo(REPO_NAME)
-                            file_content = repo.get_contents(FILE_PATH)
-                            
+                            # 4. Kirim update ke GitHub menggunakan SHA terbaru yang baru saja diambil
                             updated_csv_bytes = df_live.to_csv(index=False, encoding="latin1").encode("latin1")
                             repo.update_file(
                                 path=FILE_PATH,
                                 message=f"Update data nasional ID {curr_id}",
                                 content=updated_csv_bytes,
-                                sha=file_content.sha
+                                sha=current_sha
                             )
                             
-                            # Naikkan versi form agar widget mereset total dengan data baru
-                            st.cache_data.clear()
                             st.session_state.form_version += 1
-                                
                             st.success("✅ Perubahan berhasil disimpan permanen ke file CSV GitHub!")
                             st.balloons()
                             time.sleep(1)
