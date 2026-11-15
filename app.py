@@ -78,58 +78,23 @@ if not hasil_cari.empty:
         curr_id = person.get(id_col, '-')
         curr_perusahaan = person.get('NAMA PERUSAHAAN', '-')
 
-        # Formulir Edit dengan Tampilan Tab Modern & Kompak
+        # Formulir Edit dengan Tampilan Rapi 2 Kolom
         with st.form("form_edit_karyawan_modern"):
             st.markdown(f"### ✏️ Edit Data: **{curr_nama}**")
             st.info(f"🆔 **ID Personil:** {curr_id}  |  🏢 **Perusahaan:** {curr_perusahaan}")
-            st.caption("Ubah data di tab manapun, lalu klik tombol Simpan di bawah untuk menyimpan seluruh perubahan.")
-
-            tab1, tab2, tab3 = st.tabs(["👤 Informasi Utama & Pekerjaan", "🏠 Alamat & Domisili", "📋 Data Lainnya"])
-            
-            col_names = list(df.columns)
-            
-            # Pemisahan kolom yang bersih agar Nama Ibu Kandung tidak salah masuk tab
-            t1_cols, t2_cols, t3_cols = [], [], []
-            for col in col_names:
-                col_lower = str(col).lower()
-                if any(k in col_lower for k in ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kotamadya', 'propinsi', 'pos', 'domisili']):
-                    t2_cols.append(col)
-                elif any(k in col_lower for k in ['nama', 'id', 'nik', 'ktp', 'project', 'posisi', 'area', 'sub', 'tl', 'perusahaan']) and 'ibu' not in col_lower:
-                    t1_cols.append(col)
-                else:
-                    t3_cols.append(col)
+            st.caption("Ubah data yang diinginkan pada kolom di bawah ini, lalu klik tombol Simpan.")
 
             edited_values = {}
-
-            with tab1:
-                st.markdown("##### Atribut Utama & Pekerjaan")
-                c1, c2 = st.columns(2)
-                for i, col in enumerate(t1_cols):
-                    with (c1 if i % 2 == 0 else c2):
-                        unique_key = f"t1_{i}_{col}"
-                        val_data = person.get(col, '')
-                        val_str = '' if pd.isna(val_data) else str(val_data)
-                        edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
-
-            with tab2:
-                st.markdown("##### Informasi Alamat & Lokasi")
-                c1, c2 = st.columns(2)
-                for i, col in enumerate(t2_cols):
-                    with (c1 if i % 2 == 0 else c2):
-                        unique_key = f"t2_{i}_{col}"
-                        val_data = person.get(col, '')
-                        val_str = '' if pd.isna(val_data) else str(val_data)
-                        edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
-
-            with tab3:
-                st.markdown("##### Informasi Pribadi & Kontak Lainnya")
-                c1, c2 = st.columns(2)
-                for i, col in enumerate(t3_cols):
-                    with (c1 if i % 2 == 0 else c2):
-                        unique_key = f"t3_{i}_{col}"
-                        val_data = person.get(col, '')
-                        val_str = '' if pd.isna(val_data) else str(val_str)
-                        edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
+            col_names = list(df.columns)
+            
+            # Menampilkan seluruh kolom secara berpasangan ke dalam 2 kolom agar terisi penuh & rapi
+            c1, c2 = st.columns(2)
+            for i, col in enumerate(col_names):
+                with (c1 if i % 2 == 0 else c2):
+                    unique_key = f"edit_{i}_{col}"
+                    val_data = person.get(col, '')
+                    val_str = '' if pd.isna(val_data) else str(val_data)
+                    edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
 
             st.markdown("---")
             submitted = st.form_submit_button("💾 Simpan Perubahan Secara Permanen ke GitHub", use_container_width=True)
