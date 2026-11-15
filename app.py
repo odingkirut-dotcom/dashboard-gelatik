@@ -53,7 +53,6 @@ with col_s1:
     search_query = st.text_input("Ketik Nama / ID (Contoh: RUKOYAH):")
 
 with col_s2:
-    # Aman dari IndexError: mendeteksi kolom teks pertama yang tersedia
     text_cols = [c for c in df.columns if df[c].dtype == 'object']
     sample_col = text_cols[0] if len(text_cols) > 0 else df.columns[0]
     
@@ -98,19 +97,22 @@ if not hasil_cari.empty:
                 st.markdown("##### Atribut Utama & Pekerjaan")
                 c1, c2 = st.columns(2)
                 for i, col in enumerate(col_names):
-                    col_lower = col.lower()
+                    col_lower = str(col).lower()
                     if any(k in col_lower for k in ['nama', 'id', 'nik', 'ktp', 'project', 'posisi', 'area', 'sub', 'tl', 'perusahaan']):
                         with (c1 if i % 2 == 0 else c2):
-                            edited_values[col] = st.text_input(str(col), value=str(person.get(col, '')))
+                            # Mengatasi duplicate ID dengan key unik
+                            unique_key = f"t1_{i}_{col}"
+                            edited_values[col] = st.text_input(str(col), value=str(person.get(col, '')), key=unique_key)
 
             with tab2:
                 st.markdown("##### Informasi Alamat & Lokasi")
                 c1, c2 = st.columns(2)
                 for i, col in enumerate(col_names):
-                    col_lower = col.lower()
+                    col_lower = str(col).lower()
                     if any(k in col_lower for k in ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kotamadya', 'propinsi', 'pos', 'domisili']):
                         with (c1 if i % 2 == 0 else c2):
-                            edited_values[col] = st.text_input(str(col), value=str(person.get(col, '')))
+                            unique_key = f"t2_{i}_{col}"
+                            edited_values[col] = st.text_input(str(col), value=str(person.get(col, '')), key=unique_key)
 
             with tab3:
                 st.markdown("##### Informasi Pribadi & Kontak Lainnya")
@@ -120,7 +122,8 @@ if not hasil_cari.empty:
                 
                 for i, col in enumerate(remaining_cols):
                     with (c1 if i % 2 == 0 else c2):
-                        edited_values[col] = st.text_input(str(col), value=str(person.get(col, '')))
+                        unique_key = f"t3_{i}_{col}"
+                        edited_values[col] = st.text_input(str(col), value=str(person.get(col, '')), key=unique_key)
 
             st.markdown("---")
             submitted = st.form_submit_button("💾 Simpan Perubahan Secara Permanen ke GitHub", use_container_width=True)
