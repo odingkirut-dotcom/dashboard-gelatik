@@ -22,7 +22,7 @@ FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
 encoded_path = urllib.parse.quote(FILE_PATH)
 
-# Memuat data terbaru dengan memaksa seluruh kolom terbaca sebagai string (dtype=str)
+# Memuat data terbaru dengan pembersihan nama kolom secara total
 def load_data_from_github():
     api_url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}?t={time.time()}"
     headers = {
@@ -41,10 +41,9 @@ def load_data_from_github():
         resp_dl = requests.get(raw_url)
         file_decoded = resp_dl.content.decode("latin1")
         
-    # dtype=str mencegah ID berubah jadi angka/float (.0)
     df = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
+    # Bersihkan semua spasi pada nama kolom
     df.columns = df.columns.astype(str).str.strip()
-    # Ganti NaN menjadi string kosong agar pencarian tidak error
     df = df.fillna("")
     return df
 
@@ -67,12 +66,12 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     st.session_state.form_version += 1
     st.rerun()
 
-# Deteksi kolom ID & Nama secara aman
+# Deteksi kolom secara cerdas (kolom pertama sebagai ID, kolom kedua sebagai Nama jika tidak ada yang cocok)
 cols_list = list(df_master.columns)
-id_col = next((col for col in cols_list if 'id' in str(col).lower() or 'personil' in str(col).lower()), cols_list[0])
-nama_col = next((col for col in cols_list if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), cols_list[1] if len(cols_list) > 1 else cols_list[0])
+id_col = next((col for col in cols_list if 'id' in col.lower() or 'personil' in col.lower()), cols_list[0])
+nama_col = next((col for col in cols_list if 'nama' in col.lower() and 'perusahaan' not in col.lower() and 'ibu' not in col.lower()), cols_list[1] if len(cols_list) > 1 else cols_list[0])
 
-# --- PENCARIAN UNIVERSAL KUAT & ANTI-MELESET ---
+# --- PENCARIAN SUPER FLEKSIBEL (PARSIAL LINTAS KOLOM) ---
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
 search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: ID-JT000303):", key="input_search_query")
 
@@ -86,14 +85,13 @@ hasil_cari = pd.DataFrame()
 if search_query:
     query_clean = search_query.strip().lower()
     
-    match_indices = []
-    for idx, row in df_master.iterrows():
-        # Gabungkan seluruh teks dalam baris menjadi satu string panjang
-        row_str = " ".join(row.values).lower()
-        if query_clean in row_str:
-            match_indices.append(idx)
-            
-    hasil_cari = df_master.loc[match_indices]
+    # Cek kecocokan parsial di setiap sel pada seluruh DataFrame
+    mask = pd.Series(False, index=df_master.index)
+    for col in df_master.columns:
+        col_mask = df_master[col].str.lower().str.contains(query_clean, na=False)
+        mask = mask | col_mask
+        
+    hasil_cari = df_master[mask]
 
 # Logika Penanganan Hasil Pencarian
 if not hasil_cari.empty:
