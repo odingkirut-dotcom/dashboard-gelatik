@@ -60,7 +60,7 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     st.session_state.form_version += 1
     st.rerun()
 
-# --- PENCARIAN TEKS EKSKLUSIF (KOLOM NAMA & ID FLEKSIBEL) ---
+# --- PENCARIAN TEKS EKSKLUSIF (SUPER FLEKSIBEL) ---
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
 search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RIKA SITI RUKOYAH):", key="input_search_query")
 
@@ -77,10 +77,15 @@ if not search_query:
 hasil_cari = pd.DataFrame()
 
 if search_query:
-    q = search_query.strip()
+    keywords = search_query.strip().split()
     target_cols = [str(nama_col), str(id_col)]
-    # Pencarian fleksibel mencocokkan frasa secara utuh pada kolom Nama atau ID
-    mask = df_master[target_cols].astype(str).apply(lambda row: row.str.contains(q, case=False, na=False)).any(axis=1)
+    
+    # Pencarian cerdas: setiap kata yang diketik dicari di kolom Nama atau ID (fleksibel)
+    mask = pd.Series(True, index=df_master.index)
+    for kw in keywords:
+        kw_mask = df_master[target_cols].astype(str).apply(lambda row: row.str.contains(kw, case=False, na=False)).any(axis=1)
+        mask = mask & kw_mask
+        
     hasil_cari = df_master[mask]
 
 # Logika Penanganan Hasil Pencarian
@@ -91,8 +96,22 @@ if not hasil_cari.empty:
         curr_id = str(person.get(id_col, '-'))
         st.session_state['selected_id'] = curr_id
     else:
-        st.warning(f"Ditemukan **{len(hasil_cari)} data** yang cocok dengan kata kunci **'{search_query}'**. Silakan pilih atau ketik lebih spesifik:")
-        st.dataframe(hasil_cari[[id_col, nama_col, 'NAMA PERUSAHAAN'] if 'NAMA PERUSAHAAN' in df_master.columns else [id_col, nama_col]], use_container_width=True)
+        st.warning(f"Ditemukan **{len(hasil_cari)} data** yang cocok dengan kata kunci **'{search_query}'**. Silakan pilih data yang sesuai dari tabel di bawah:")
+        
+        # Tampilkan tabel pilihan interaktif dengan tombol pilih
+        for idx, row in hasil_cari.iterrows():
+            c_id = str(row.get(id_col, '-'))
+            c_nama = str(row.get(nama_col, '-'))
+            c_perusahaan = str(row.get('NAMA PERUSAHAAN', '-'))
+            
+            cols_btn = st.columns([3, 2, 1])
+            cols_btn[0].markdown(f"**{c_nama}** (ID: `{c_id}`)")
+            cols_btn[1].markdown(f"🏢 {c_perusahaan}")
+            if cols_btn[2].button("Pilih", key=f"btn_pick_{c_id}_{idx}"):
+                st.session_state['selected_id'] = c_id
+                st.rerun()
+        
+        st.markdown("---")
         if 'selected_id' in st.session_state:
             del st.session_state['selected_id']
 else:
@@ -213,6 +232,6 @@ if 'selected_id' in st.session_state:
                         st.error(f"Gagal menyimpan ke GitHub: {e}")
 else:
     if not search_query:
-        st.info("💡 Ketik nama lengkap karyawan atau ID pada kotak pencarian di atas agar langsung memunculkan form edit.")
+        st.info("💡 Ketik nama karyawan atau ID pada kotak pencarian di atas untuk mulai mencari.")
         with st.expander("Lihat Seluruh Tabel Database Nasional"):
             st.dataframe(df_master, use_container_width=True)
