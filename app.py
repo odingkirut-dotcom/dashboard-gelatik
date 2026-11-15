@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from github import Github
 import io
+import urllib.parse
 
 # Konfigurasi Halaman Web
 st.set_page_config(
@@ -17,10 +18,11 @@ st.markdown("Kelola, cari, dan edit data personil. Perubahan akan **langsung ter
 REPO_NAME = "odingkirut-dotcom/dashboard-gelatik"
 FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
-# Menggunakan Raw URL GitHub untuk membaca data dengan stabil & cepat
-RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{FILE_PATH}"
+# Meng-encode nama file agar spasi otomatis menjadi %20 agar aman dibaca sebagai URL
+encoded_path = urllib.parse.quote(FILE_PATH)
+RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}"
 
-# Fungsi membaca data langsung via URL mentah (Aman dari error encoding PyGithub)
+# Fungsi membaca data langsung via URL mentah
 @st.cache_data(ttl=10)
 def load_data_from_github():
     df = pd.read_csv(RAW_URL, encoding="latin1")
