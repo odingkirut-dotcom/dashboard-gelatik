@@ -1,68 +1,88 @@
 import streamlit as st
 import pandas as pd
+from github import Github
+import io
 
 # Konfigurasi Halaman Web
 st.set_page_config(
-    page_title="Dashboard Database Nasional",
-    page_icon="📊",
+    page_title="Dashboard & Editor PT. Gelatik Supra",
+    page_icon="🦅",
     layout="wide"
 )
 
-# Judul Dashboard
-st.title("📊 Sistem Pencarian Database Nasional")
-st.markdown("Data Nasional per **13 November 2026**.")
+# --- PENGATURAN GITHUB ---
+REPO_NAME = "odingkirut-dotcom/dashboard-gelatik"  # Sesuaikan dengan repository Anda
+FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
-# Fungsi untuk memuat data
-@st.cache_data
-def load_data():
-    df = pd.read_csv("Summary Database Nasional 13 November 2026.csv", encoding="latin1")
-    df = df.dropna(subset=['Nama'])
-    if 'NoKTP' in df.columns:
-        df['NoKTP'] = df['NoKTP'].apply(lambda x: f"{int(x)}" if pd.notnull(x) and isinstance(x, (int, float)) else str(x))
-    return df
+st.title("🦅 Dashboard & Editor Data - PT. Gelatik Supra")
+st.markdown("Kelola, cari, dan edit data personil. Perubahan akan **langsung tersimpan secara permanen ke file CSV di GitHub**.")
 
-df = load_data()
+# 1. Fungsi membaca data langsung dari GitHub
+def load_data_from_github():
+    g = Github(st.secrets["GITHUB_TOKEN"])
+    repo = g.get_repo(REPO_NAME)
+    contents = repo.get_contents(FILE_PATH)
+    csv_data = contents.decoded_content.decode("latin1")
+    df = pd.read_csv(io.StringIO(csv_data), encoding="latin1")
+    
+    # Filter khusus PT. Gelatik Supra
+    if 'NAMA PERUSAHAAN' in df.columns:
+        df_gelatik = df[df['NAMA PERUSAHAAN'] == 'PT. GELATIK SUPRA'].copy()
+    else:
+        df_gelatik = df.copy()
+        
+    df_gelatik = df_gelatik.dropna(subset=['Nama'])
+    if 'NoKTP' in df_gelatik.columns:
+        df_gelatik['NoKTP'] = df_gelatik['NoKTP'].apply(lambda x: f"{int(x)}" if pd.notnull(x) and isinstance(x, (int, float)) else str(x))
+    if 'Handphone' in df_gelatik.columns:
+        df_gelatik['Handphone'] = df_gelatik['Handphone'].astype(str)
+        
+    return df_gelatik, contents.sha
 
-# --- SIDEBAR: FILTER DATA ---
-st.sidebar.header("🔍 Filter Data")
-
-if 'NAMA PERUSAHAAN' in df.columns:
-    selected_company = st.sidebar.selectbox(
-        "Pilih Perusahaan",
-        options=["Semua Perusahaan"] + list(df['NAMA PERUSAHAAN'].dropna().unique())
+# 2. Fungsi menyimpan perubahan permanen ke GitHub (menggabungkan kembali dengan data perusahaan lain)
+def save_data_to_github(df_updated_gelatik, file_sha, commit_message):
+    g = Github(st.secrets["GITHUB_TOKEN"])
+    repo = g.get_repo(REPO_NAME)
+    
+    # Ambil file CSV utuh dari GitHub agar data perusahaan lain tidak ikut terhapus
+    original_contents = repo.get_contents(FILE_PATH)
+    orig_csv_data = original_contents.decoded_content.decode("latin1")
+    df_full = pd.read_csv(io.StringIO(orig_csv_data), encoding="latin1")
+    
+    # Update data perusahaan Gelatik ke dataframe utama berdasarkan index aslinya
+    df_full.update(df_updated_gelatik)
+    
+    csv_buffer = io.StringIO()
+    df_full.to_csv(csv_buffer, index=False, encoding="latin1")
+    
+    repo.update_file(
+        path=FILE_PATH,
+        message=commit_message,
+        content=csv_buffer.getvalue().encode("latin1"),
+        sha=file_sha
     )
-    if selected_company != "Semua Perusahaan":
-        df = df[df['NAMA PERUSAHAAN'] == selected_company]
 
-if 'Nama Project' in df.columns:
-    selected_project = st.sidebar.selectbox(
-        "Pilih Nama Project",
-        options=["Semua Project"] + list(df['Nama Project'].dropna().unique())
-    )
-    if selected_project != "Semua Project":
-        df = df[df['Nama Project'] == selected_project]
+# Memuat data ke Session State
+try:
+    if 'df_data' not in st.session_state:
+        with st.spinner("Mengambil database terbaru dari GitHub..."):
+            df_loaded, sha_loaded = load_data_from_github()
+            st.session_state.df_data = df_loaded
+            st.session_state.file_sha = sha_loaded
+except Exception as e:
+    st.error(f"Gagal terhubung ke GitHub. Pastikan GITHUB_TOKEN sudah benar di Secrets. Error: {e}")
+    st.stop()
 
-if 'Area CBS' in df.columns:
-    selected_area = st.sidebar.selectbox(
-        "Pilih Area CBS",
-        options=["Semua Area"] + list(df['Area CBS'].dropna().unique())
-    )
-    if selected_area != "Semua Area":
-        df = df[df['Area CBS'] == selected_area]
+df = st.session_state.df_data
 
-# --- METRIK UTAMA ---
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Personil", len(df))
-if 'NAMA PERUSAHAAN' in df.columns:
-    col2.metric("Total Perusahaan", df['NAMA PERUSAHAAN'].nunique())
-if 'Area CBS' in df.columns:
-    col3.metric("Total Area CBS", df['Area CBS'].nunique())
+# Tombol untuk memuat ulang data terbaru dari GitHub
+if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
+    del st.session_state['df_data']
+    st.rerun()
 
-st.markdown("---")
-
-# --- PENCARIAN CERDAS ---
-st.subheader("🔎 Cari Data Karyawan")
-search_query = st.text_input("Ketik Nama atau ID Personil (Contoh: 'Siti' untuk tabel, atau nama lengkap untuk form):")
+# --- PENCARIAN & FORM EDIT SPESIFIK ---
+st.subheader("🔎 Cari Karyawan untuk Dilihat / Diedit")
+search_query = st.text_input("Ketik Nama Lengkap atau ID Personil (Contoh: RIKA KARTIKA):")
 
 if search_query:
     mask = (
@@ -72,72 +92,66 @@ if search_query:
     hasil_cari = df[mask]
 
     if len(hasil_cari) == 0:
-        st.warning("Data tidak ditemukan. Coba periksa kembali ejaan nama.")
-    
-    # KONDISI 1: Jika hasil pencarian HANYA 1 ORANG -> Tampilkan Form Identitas
+        st.warning("Data tidak ditemukan. Periksa kembali ejaan nama.")
     elif len(hasil_cari) == 1:
-        person = hasil_cari.iloc[0]
+        idx_row = hasil_cari.index[0]
+        person = df.loc[idx_row]
 
-        def val(col_name):
-            v = person.get(col_name, "-")
-            return "-" if pd.isna(v) or str(v).strip() == "" else str(v)
+        st.success(f"Ditemukan data untuk: **{person['Nama']}** (ID: {person['ID Personil']})")
 
-        st.success(f"Ditemukan 1 data spesifik untuk: **{val('Nama')}**")
+        # Formulir Edit Data Karyawan
+        with st.form("form_edit_karyawan"):
+            st.markdown("### ✏️ Form Edit Informasi Karyawan")
+            st.caption("Ubah data di bawah ini sesuai kebutuhan, lalu klik tombol Simpan.")
 
-        with st.container(border=True):
-            st.markdown(f"### 👤 {val('Nama')}")
-            st.caption(f"**ID Personil:** {val('ID Personil')}  |  **Perusahaan:** {val('NAMA PERUSAHAAN')}  |  **Masa Kerja:** {val('MASA KERJA')}")
-            st.markdown("---")
+            c1, c2 = st.columns(2)
+            with c1:
+                new_nama = st.text_input("Nama Lengkap", value=str(person.get('Nama', '')))
+                new_hp = st.text_input("No. Handphone", value=str(person.get('Handphone', '')))
+                new_email = st.text_input("Alamat Email", value=str(person.get('Alamat Email', '')))
+                new_pendidikan = st.text_input("Pendidikan Terakhir", value=str(person.get('Pendidikan Terakhir', '')))
+                new_status_kawin = st.text_input("Status Perkawinan", value=str(person.get('Status Perkawinan', '')))
+            with c2:
+                new_project = st.text_input("Nama Project", value=str(person.get('Nama Project', '')))
+                new_posisi = st.text_input("Posisi", value=str(person.get('Posisi', '')))
+                new_area = st.text_input("Area CBS", value=str(person.get('Area CBS', '')))
+                new_sub_area = st.text_input("Sub Area", value=str(person.get('Sub Area', '')))
+                new_tl = st.text_input("Nama Team Leader (TL)", value=str(person.get('Nama TL', '')))
 
-            tab1, tab2, tab3 = st.tabs(["📋 Data Pribadi & Alamat", "💼 Data Pekerjaan & Project", "📑 Kontrak, Rekening & BPJS"])
+            submitted = st.form_submit_button("💾 Simpan Perubahan Secara Permanen ke GitHub")
+            
+            if submitted:
+                with st.spinner("Menyimpan perubahan langsung ke file CSV di GitHub..."):
+                    try:
+                        # Update data di session state lokal
+                        st.session_state.df_data.loc[idx_row, 'Nama'] = new_nama
+                        st.session_state.df_data.loc[idx_row, 'Handphone'] = new_hp
+                        st.session_state.df_data.loc[idx_row, 'Alamat Email'] = new_email
+                        st.session_state.df_data.loc[idx_row, 'Pendidikan Terakhir'] = new_pendidikan
+                        st.session_state.df_data.loc[idx_row, 'Status Perkawinan'] = new_status_kawin
+                        st.session_state.df_data.loc[idx_row, 'Nama Project'] = new_project
+                        st.session_state.df_data.loc[idx_row, 'Posisi'] = new_posisi
+                        st.session_state.df_data.loc[idx_row, 'Area CBS'] = new_area
+                        st.session_state.df_data.loc[idx_row, 'Sub Area'] = new_sub_area
+                        st.session_state.df_data.loc[idx_row, 'Nama TL'] = new_tl
 
-            with tab1:
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.markdown(f"**No. KTP:** `{val('NoKTP')}`")
-                    st.markdown(f"**Tempat, Tanggal Lahir:** {val('Tempat lahir')}, {val('Tanggal Lahir')}")
-                    st.markdown(f"**Jenis Kelamin:** {val('Jenis Kelamin')}")
-                    st.markdown(f"**Agama:** {val('Agama')}")
-                    st.markdown(f"**Status Perkawinan:** {val('Status Perkawinan')}")
-                with c2:
-                    st.markdown(f"**Pendidikan Terakhir:** {val('Pendidikan Terakhir')}")
-                    st.markdown(f"**No. Handphone:** {val('Handphone')}")
-                    st.markdown(f"**Alamat Email:** {val('Alamat Email')}")
-                    st.markdown(f"**Nama Ibu Kandung:** {val('Nama Ibu Kandung')}")
-                    st.markdown(f"**Alamat KTP:** {val('Alamat')} RT {val('RT')}/RW {val('RW')}, Kel. {val('kelurahan')}, Kec. {val('kecamatan')}, {val('kotamadya')}, {val('propinsi')} ({val('Kode Pos')})")
-
-            with tab2:
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.markdown(f"**Perusahaan:** {val('NAMA PERUSAHAAN')}")
-                    st.markdown(f"**Nama Client:** {val('Nama Client')}")
-                    st.markdown(f"**Nama Project:** {val('Nama Project')}")
-                    st.markdown(f"**Posisi:** {val('Posisi')}")
-                with c2:
-                    st.markdown(f"**Area CBS / Sub Area:** {val('Area CBS')} / {val('Sub Area')}")
-                    st.markdown(f"**Area Coverage:** {val('Area Coverage')}")
-                    st.markdown(f"**Outlet:** {val('Outlet')}")
-                    st.markdown(f"**Nama Team Leader (TL):** {val('Nama TL')}")
-
-            with tab3:
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.markdown(f"**Tanggal Bergabung:** {val('Tanggal Bergabung')}")
-                    st.markdown(f"**Tanggal Kontrak:** {val('Tanggal Kontrak')}")
-                    st.markdown(f"**Berakhir Kontrak:** {val('Tanggal Berakhir Kontrak')}")
-                    st.markdown(f"**Tanggal Keluar & Alasan:** {val('Tanggal Keluar')} ({val('Alasan Keluar')})")
-                with c2:
-                    st.markdown(f"**No. Rekening:** `{val('No Rekening')}`")
-                    st.markdown(f"**Nama di Rekening:** {val('Nama Pada Nomer Rekening')}")
-                    st.markdown(f"**No. NPWP:** `{val('No NPWP')}`")
-                    st.markdown(f"**No. Jamsostek / BPJS:** {val('No Jamsostek')} / {val('No BPJS Kesehatan')}")
-
-    # KONDISI 2: Jika hasil pencarian BANYAK ORANG (seperti mengetik "Siti") -> Tampilkan Tabel
+                        # Simpan permanen ke GitHub
+                        save_data_to_github(
+                            st.session_state.df_data,
+                            st.session_state.file_sha,
+                            f"Update data karyawan: {new_nama}"
+                        )
+                        
+                        # Reset cache state agar memuat data baru
+                        del st.session_state['df_data']
+                        st.success(f"✅ Perubahan untuk **{new_nama}** berhasil disimpan permanen ke file CSV GitHub!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Gagal menyimpan ke GitHub: {e}")
     else:
-        st.info(f"Ditemukan **{len(hasil_cari)} data** yang cocok dengan kata kunci **'{search_query}'**. Ditampilkan dalam bentuk tabel:")
-        st.dataframe(hasil_cari, use_container_width=True)
-
+        st.info(f"Ditemukan **{len(hasil_cari)} data** yang mirip. Ketik nama lebih spesifik agar hanya 1 orang yang muncul untuk diedit:")
+        st.dataframe(hasil_cari[['ID Personil', 'Nama', 'Nama Project', 'Area CBS', 'Handphone']], use_container_width=True)
 else:
-    st.info("💡 Silakan ketik nama pada kotak pencarian di atas. Jika mengetik nama umum (misal: **'Siti'**), akan muncul tabel daftar nama. Jika mengetik nama lengkap, akan muncul form identitas spesifik.")
-    with st.expander("Lihat Seluruh Tabel Database (Klik untuk membuka)"):
+    st.info("💡 Ketik nama karyawan atau ID personil pada kotak pencarian di atas untuk mulai melihat dan mengedit informasinya.")
+    with st.expander("Lihat Seluruh Tabel Data PT. Gelatik Supra"):
         st.dataframe(df, use_container_width=True)
