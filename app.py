@@ -33,6 +33,9 @@ def load_data_from_github():
         
     if resp.status_code == 200:
         file_decoded = resp.content.decode("latin1")
+        # Validasi agar tidak membaca file yang rusak karena error 404
+        if "404: Not Found" in file_decoded[:50]:
+            raise Exception("File CSV di GitHub saat ini berisi teks error '404: Not Found'. Harap restore/perbaiki isi file CSV di GitHub terlebih dahulu.")
         df = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
         df.columns = df.columns.astype(str).str.strip()
         df = df.fillna("")
@@ -170,20 +173,19 @@ if 'selected_row_idx' in st.session_state:
                             file_content_b64 = file_data["content"]
                             file_decoded = base64.b64decode(file_content_b64).decode("latin1")
                         
-                        if not file_decoded.strip():
-                            st.error("File CSV di GitHub terbaca kosong.")
+                        if "404: Not Found" in file_decoded[:50]:
+                            st.error("File CSV di GitHub sedang rusak (berisi 404). Perbaiki isi file CSV di GitHub terlebih dahulu.")
                             st.stop()
                             
                         df_live = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
                         df_live.columns = df_live.columns.astype(str).str.strip()
                         df_live = df_live.fillna("")
                         
-                        # Pastikan indeks aman: jika indeks live kurang, tambahkan baris kosong otomatis
+                        # Pengaman: Jika indeks live kurang dari target, tambahkan baris kosong otomatis
                         while target_idx >= len(df_live):
                             new_row = {col: "" for col in df_live.columns}
                             df_live = pd.concat([df_live, pd.DataFrame([new_row])], ignore_index=True)
                         
-                        # Update langsung nilai pada baris tersebut
                         for col_name, val in edited_values.items():
                             if col_name in df_live.columns:
                                 df_live.loc[target_idx, col_name] = val
