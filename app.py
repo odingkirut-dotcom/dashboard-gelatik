@@ -109,7 +109,6 @@ if 'selected_id' in st.session_state:
             st.caption("Ubah data apa saja pada kolom di bawah ini, lalu klik tombol Simpan.")
 
             edited_values = {}
-            # Hanya ambil kolom yang valid (abaikan kolom Unnamed kosong jika ada)
             valid_cols = [c for c in df_fresh.columns if not str(c).startswith('Unnamed:')]
             
             c1, c2 = st.columns(2)
@@ -156,13 +155,13 @@ if 'selected_id' in st.session_state:
                                     else:
                                         df_live.loc[live_idx, col_name] = val
 
-                            # 4. Konversi kembali ke CSV bytes dengan encoding latin1 yang aman
-                            updated_csv_bytes = df_live.to_csv(index=False, encoding="latin1").encode("latin1")
+                            # 4. Konversi ke string CSV standar yang didukung PyGithub
+                            updated_csv_str = df_live.to_csv(index=False, encoding="latin1")
                             
                             repo.update_file(
                                 path=FILE_PATH,
                                 message=f"Update data nasional ID {curr_id}",
-                                content=updated_csv_bytes,
+                                content=updated_csv_str,
                                 sha=current_sha
                             )
                             
