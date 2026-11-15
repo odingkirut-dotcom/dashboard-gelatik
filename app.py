@@ -18,7 +18,6 @@ st.markdown("Kelola, cari, dan edit data personil. Perubahan akan **langsung ter
 REPO_NAME = "odingkirut-dotcom/dashboard-gelatik"
 FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
-# Meng-encode nama file agar spasi otomatis menjadi %20 agar aman dibaca sebagai URL
 encoded_path = urllib.parse.quote(FILE_PATH)
 RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}"
 
@@ -27,9 +26,10 @@ RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}"
 def load_data_from_github():
     df = pd.read_csv(RAW_URL, encoding="latin1")
     
-    # Filter khusus PT. Gelatik Supra
+    # Filter fleksibel untuk PT. Gelatik Supra (mengabaikan spasi/huruf besar-kecil)
     if 'NAMA PERUSAHAAN' in df.columns:
-        df_gelatik = df[df['NAMA PERUSAHAAN'] == 'PT. GELATIK SUPRA'].copy()
+        df['NAMA PERUSAHAAN_clean'] = df['NAMA PERUSAHAAN'].astype(str).str.upper().str.replace(".", "").str.strip()
+        df_gelatik = df[df['NAMA PERUSAHAAN_clean'].str.contains("GELATIK SUPRA", na=False)].copy()
     else:
         df_gelatik = df.copy()
         
@@ -41,19 +41,19 @@ def load_data_from_github():
         
     return df_gelatik
 
-# Fungsi khusus untuk menyimpan perubahan permanen ke GitHub menggunakan Token
+# Fungsi khusus untuk menyimpan perubahan permanen ke GitHub
 def save_data_to_github(df_updated_gelatik, commit_message):
     g = Github(st.secrets["GITHUB_TOKEN"])
     repo = g.get_repo(REPO_NAME)
     
-    # Ambil file asli dari repository untuk mendapatkan SHA terbaru & data perusahaan lain
     file_content = repo.get_contents(FILE_PATH)
     df_full = pd.read_csv(io.BytesIO(file_content.decoded_content), encoding="latin1")
     
-    # Update data perusahaan Gelatik ke dataframe utama
+    # Hapus kolom helper sementara jika ada
+    if 'NAMA PERUSAHAAN_clean' in df_updated_gelatik.columns:
+        df_updated_gelatik = df_updated_gelatik.drop(columns=['NAMA PERUSAHAAN_clean'])
+        
     df_full.update(df_updated_gelatik)
-    
-    # Konversi kembali ke format byte CSV
     updated_csv_bytes = df_full.to_csv(index=False, encoding="latin1").encode("latin1")
     
     repo.update_file(
@@ -83,9 +83,10 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
 
 # --- PENCARIAN & FORM EDIT SPESIFIK ---
 st.subheader("🔎 Cari Karyawan untuk Dilihat / Diedit")
-search_query = st.text_input("Ketik Nama Lengkap atau ID Personil (Contoh: RIKA KARTIKA):")
+search_query = st.text_input("Ketik Nama Lengkap atau ID Personil (Contoh: RIKA atau bagian dari nama):")
 
 if search_query:
+    # Pencarian fleksibel: cukup ketik sebagian nama (misal "RIKA" atau "RUKOYAH")
     mask = (
         df['Nama'].str.contains(search_query.strip(), case=False, na=False) |
         df['ID Personil'].astype(str).str.contains(search_query.strip(), case=False, na=False)
@@ -93,7 +94,7 @@ if search_query:
     hasil_cari = df[mask]
 
     if len(hasil_cari) == 0:
-        st.warning("Data tidak ditemukan. Periksa kembali ejaan nama.")
+        st.warning("Data tidak ditemukan. Coba ketik nama depannya saja (misal: 'Rika' atau 'Siti').")
     elif len(hasil_cari) == 1:
         idx_row = hasil_cari.index[0]
         person = df.loc[idx_row]
@@ -124,7 +125,6 @@ if search_query:
             if submitted:
                 with st.spinner("Menyimpan perubahan langsung ke file CSV di GitHub..."):
                     try:
-                        # Update data di session state lokal
                         st.session_state.df_data.loc[idx_row, 'Nama'] = new_nama
                         st.session_state.df_data.loc[idx_row, 'Handphone'] = new_hp
                         st.session_state.df_data.loc[idx_row, 'Alamat Email'] = new_email
@@ -136,7 +136,6 @@ if search_query:
                         st.session_state.df_data.loc[idx_row, 'Sub Area'] = new_sub_area
                         st.session_state.df_data.loc[idx_row, 'Nama TL'] = new_tl
 
-                        # Simpan permanen ke GitHub menggunakan token
                         save_data_to_github(
                             st.session_state.df_data,
                             f"Update data karyawan: {new_nama}"
@@ -149,9 +148,9 @@ if search_query:
                     except Exception as e:
                         st.error(f"Gagal menyimpan ke GitHub: {e}")
     else:
-        st.info(f"Ditemukan **{len(hasil_cari)} data** yang mirip. Ketik nama lebih spesifik agar hanya 1 orang yang muncul untuk diedit:")
+        st.info(f"Ditemukan **{len(hasil_cari)} data**. Silakan pilih atau ketik nama lebih spesifik dari daftar di bawah:")
         st.dataframe(hasil_cari[['ID Personil', 'Nama', 'Nama Project', 'Area CBS', 'Handphone']], use_container_width=True)
 else:
-    st.info("💡 Ketik nama karyawan atau ID personil pada kotak pencarian di atas untuk mulai melihat dan mengedit informasinya.")
+    st.info("💡 Ketik nama karyawan (cukup nama depannya saja jika ragu) atau ID personil pada kotak pencarian di atas.")
     with st.expander("Lihat Seluruh Tabel Data PT. Gelatik Supra"):
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df.drop(columns=['NAMA PERUSAHAAN_clean'], errors='ignore'), use_container_width=True)
