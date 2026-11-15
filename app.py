@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import base64
+import io
 import urllib.parse
 import time
 
@@ -141,10 +142,15 @@ if 'selected_id' in st.session_state:
                         file_data = resp_get.json()
                         current_sha = file_data["sha"]
                         
-                        # Decode konten live dari GitHub
+                        # Decode konten live dari GitHub dengan aman menggunakan io.StringIO
                         file_content_b64 = file_data["content"]
                         file_decoded = base64.b64decode(file_content_b64).decode("latin1")
-                        df_live = pd.read_csv(pd.io.common.StringIO(file_decoded), encoding="latin1")
+                        
+                        if not file_decoded.strip():
+                            st.error("File CSV di GitHub terbaca kosong.")
+                            st.stop()
+                            
+                        df_live = pd.read_csv(io.StringIO(file_decoded), encoding="latin1")
                         
                         # 2. Cari baris berdasarkan ID personil pada data live
                         matched_live = df_live[df_live[id_col].astype(str) == active_id]
@@ -165,7 +171,7 @@ if 'selected_id' in st.session_state:
                                     else:
                                         df_live.loc[live_idx, col_name] = val
 
-                            # 3. Konversi ke string CSV, lalu encode ke Base64 (standar GitHub API)
+                            # 3. Konversi ke string CSV, lalu encode ke Base64
                             updated_csv_str = df_live.to_csv(index=False, encoding="latin1")
                             updated_b64 = base64.b64encode(updated_csv_str.encode("latin1")).decode("utf-8")
                             
