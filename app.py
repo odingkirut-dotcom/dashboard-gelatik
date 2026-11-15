@@ -20,25 +20,33 @@ st.markdown("Kelola dan edit data personil dengan cepat. Perubahan tersimpan **p
 REPO_NAME = "odingkirut-dotcom/dashboard-gelatik"
 FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
+# Menggunakan enkode URL yang tepat untuk API GitHub
 encoded_path = urllib.parse.quote(FILE_PATH)
 
 # Memuat data langsung via Raw URL GitHub dengan anti-cache
 def load_data_from_github():
-    raw_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}?t={time.time()}"
-    resp = requests.get(raw_url)
+    # Coba beberapa variasi URL Raw untuk menjamin tembus tanpa 404
+    urls = [
+        f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}?t={time.time()}",
+        f"https://raw.githubusercontent.com/{REPO_NAME}/main/Summary%20Database%20Nasional%2013%20November%202026.csv?t={time.time()}"
+    ]
     
-    if resp.status_code != 200:
-        raw_url_fallback = f"https://raw.githubusercontent.com/{REPO_NAME}/main/Summary%20Database%20Nasional%2013%20November%202026.csv?t={time.time()}"
-        resp = requests.get(raw_url_fallback)
-        
-    if resp.status_code == 200:
+    resp = None
+    for url in urls:
+        resp = requests.get(url)
+        if resp.status_code == 200:
+            break
+            
+    if resp and resp.status_code == 200:
         file_decoded = resp.content.decode("latin1")
+        if "404: Not Found" in file_decoded[:50]:
+            raise Exception("File CSV di GitHub sedang rusak berisi 404. Harap restore file CSV asli Anda di GitHub terlebih dahulu.")
         df = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
         df.columns = df.columns.astype(str).str.strip()
         df = df.fillna("")
         return df
     else:
-        raise Exception(f"Gagal mengunduh file dari GitHub (Status Code: {resp.status_code})")
+        raise Exception("Gagal mengunduh file CSV dari GitHub. Periksa kembali nama repository dan file Anda.")
 
 try:
     with st.spinner("Mengambil database nasional terbaru dari GitHub..."):
@@ -154,14 +162,20 @@ if 'selected_row_idx' in st.session_state:
                             "Accept": "application/vnd.github+json"
                         }
                         
+                        # Ambil SHA file terbaru dengan pengaman ketat
                         resp_get = requests.get(api_url, headers=headers)
                         if resp_get.status_code != 200:
-                            st.error(f"Gagal terhubung ke GitHub API (Status: {resp_get.status_code})")
+                            st.error(f"GAGAL: Tidak dapat mengakses API GitHub (Status {resp_get.status_code}). Periksa kembali GITHUB_TOKEN Anda. Penyimpanan dibatalkan agar file aman.")
                             st.stop()
                             
                         file_data = resp_get.json()
+                        if "sha" not in file_data:
+                            st.error("GAGAL: Struktur data dari GitHub tidak valid. Penyimpanan dibatalkan.")
+                            st.stop()
+                            
                         current_sha = file_data["sha"]
                         
+                        # Unduh isi file live untuk memastikan data sinkron
                         download_url = file_data.get("download_url")
                         if download_url:
                             resp_dl = requests.get(f"{download_url}&t={time.time()}")
@@ -170,17 +184,23 @@ if 'selected_row_idx' in st.session_state:
                             file_content_b64 = file_data["content"]
                             file_decoded = base64.b64decode(file_content_b64).decode("latin1")
                             
+                        if "404: Not Found" in file_decoded[:50]:
+                            st.error("GAGAL: File CSV di GitHub saat ini berisi teks 404. Harap restore file CSV asli Anda di GitHub terlebih dahulu.")
+                            st.stop()
+                            
                         df_live = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
                         df_live.columns = df_live.columns.astype(str).str.strip()
                         df_live = df_live.fillna("")
                         
-                        while target_idx >= len(df_live):
-                            new_row = {col: "" for col in df_live.columns}
+                        # Update baris berdasarkan indeks
+                        if target_idx < len(df_live):
+                            for col_name, val in edited_values.items():
+                                if col_name in df_live.columns:
+                                    df_live.loc[target_idx, col_name] = val
+                        else:
+                            # Jika baris melebihi, tambahkan sebagai baris baru
+                            new_row = {col: edited_values.get(col, "") for col in df_live.columns}
                             df_live = pd.concat([df_live, pd.DataFrame([new_row])], ignore_index=True)
-                        
-                        for col_name, val in edited_values.items():
-                            if col_name in df_live.columns:
-                                df_live.loc[target_idx, col_name] = val
 
                         updated_csv_str = df_live.to_csv(index=False, encoding="latin1")
                         updated_b64 = base64.b64encode(updated_csv_str.encode("latin1")).decode("utf-8")
@@ -199,9 +219,9 @@ if 'selected_row_idx' in st.session_state:
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error(f"Gagal menyimpan ke GitHub API: {resp_put.text}")
+                            st.error(f"Gagal menyimpan ke GitHub API: {resp_put.text}. File CSV Anda TIDAK DITIMPA.")
                     except Exception as e:
-                        st.error(f"Terjadi kesalahan saat menyimpan: {e}")
+                        st.error(f"Terjadi kesalahan sistem saat menyimpan: {e}")
     else:
         st.error("Indeks data tidak valid. Silakan cari ulang.")
 else:
