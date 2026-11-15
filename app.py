@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from github import Github
-import io
 import urllib.parse
 
 # Konfigurasi Halaman Web
@@ -12,7 +11,7 @@ st.set_page_config(
 )
 
 st.title("🦅 Dashboard Data - Database Nasional")
-st.markdown("Kelola, cari, dan edit data personil dengan tampilan terorganisir. Perubahan tersimpan **permanen ke GitHub**.")
+st.markdown("Kelola dan edit data personil dengan cepat. Perubahan tersimpan **permanen ke GitHub**.")
 
 # --- PENGATURAN GITHUB ---
 REPO_NAME = "odingkirut-dotcom/dashboard-gelatik"
@@ -22,7 +21,7 @@ encoded_path = urllib.parse.quote(FILE_PATH)
 RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}"
 
 # Memuat data dengan cache yang stabil
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=10)
 def load_data_from_github():
     df = pd.read_csv(RAW_URL, encoding="latin1")
     return df
@@ -57,7 +56,6 @@ hasil_cari = pd.DataFrame()
 
 if search_query:
     keywords = search_query.strip().split()
-    
     mask = pd.Series(True, index=df.index)
     target_cols = [str(nama_col), str(id_col)]
     
@@ -67,113 +65,72 @@ if search_query:
         
     hasil_cari = df[mask]
 
-# Logika Tampilan Form Edit jika data ditemukan / dipilih
+# Logika Tampilan Form Edit jika data ditemukan
 if not hasil_cari.empty:
     if len(hasil_cari) == 1:
         target_row_idx = hasil_cari.index[0]
         person = df.loc[target_row_idx]
 
-        curr_nama = person.get(nama_col, '-')
-        curr_id = person.get(id_col, '-')
-        curr_perusahaan = person.get('NAMA PERUSAHAAN', '-')
+        curr_nama = str(person.get(nama_col, '-'))
+        curr_id = str(person.get(id_col, '-'))
+        curr_perusahaan = str(person.get('NAMA PERUSAHAAN', '-'))
 
-        # Simpan ID unik di session state untuk keamanan pencarian baris saat submit
-        st.session_state['active_id'] = curr_id
+        st.markdown(f"### ✏️ Edit Data: **{curr_nama}**")
+        st.info(f"🆔 **ID Personil:** {curr_id}  |  🏢 **Perusahaan:** {curr_perusahaan}")
 
-        # Formulir Edit dengan Tampilan Seksi Rapi Berkelompok (2 Kolom)
-        with st.form("form_edit_karyawan_modern"):
-            st.markdown(f"### ✏️ Edit Data: **{curr_nama}**")
-            st.info(f"🆔 **ID Personil:** {curr_id}  |  🏢 **Perusahaan:** {curr_perusahaan}")
-            st.caption("Semua atribut karyawan tersedia di bawah ini. Ubah data apa saja lalu klik tombol Simpan.")
-
-            edited_values = {}
-            col_names = list(df.columns)
+        # Menggunakan selectbox untuk memilih kolom spesifik yang ingin diubah (Sangat ringan & anti-blank)
+        col_names = list(df.columns)
+        
+        with st.form("form_edit_spesifik"):
+            st.markdown("##### Pilih Atribut yang Ingin Diubah:")
             
-            sec1_cols, sec2_cols, sec3_cols = [], [], []
-            for col in col_names:
-                col_lower = str(col).lower()
-                if any(k in col_lower for k in ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kotamadya', 'propinsi', 'pos', 'domisili']):
-                    sec2_cols.append(col)
-                elif any(k in col_lower for k in ['nama', 'id', 'nik', 'ktp', 'project', 'posisi', 'area', 'sub', 'tl', 'perusahaan']) and 'ibu' not in col_lower:
-                    sec1_cols.append(col)
-                else:
-                    sec3_cols.append(col)
-
-            # Bagian 1: Informasi Utama & Pekerjaan
-            st.markdown("#### 👤 Informasi Utama & Pekerjaan")
-            c1, c2 = st.columns(2)
-            for i, col in enumerate(sec1_cols):
-                with (c1 if i % 2 == 0 else c2):
-                    unique_key = f"sec1_{i}_{col}"
-                    val_data = person.get(col, '')
-                    val_str = '' if pd.isna(val_data) else str(val_data)
-                    edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
-
+            # Buat pilihan kolom yang sering diedit di atas, sisanya dalam pilihan lengkap
+            selected_col_to_edit = st.selectbox("Pilih Kolom / Atribut:", options=col_names, index=col_names.index('Nama Ibu Kandung') if 'Nama Ibu Kandung' in col_names else 0)
+            
+            current_val = person.get(selected_col_to_edit, '')
+            current_val_str = '' if pd.isna(current_val) else str(current_val)
+            
+            new_value = st.text_input(f"Nilai Baru untuk [{selected_col_to_edit}]:", value=current_val_str)
+            
             st.markdown("---")
-            # Bagian 2: Informasi Alamat & Lokasi
-            st.markdown("#### 🏠 Informasi Alamat & Lokasi")
-            c1, c2 = st.columns(2)
-            for i, col in enumerate(sec2_cols):
-                with (c1 if i % 2 == 0 else c2):
-                    unique_key = f"sec2_{i}_{col}"
-                    val_data = person.get(col, '')
-                    val_str = '' if pd.isna(val_data) else str(val_data)
-                    edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
-
-            st.markdown("---")
-            # Bagian 3: Informasi Pribadi & Kontak Lainnya
-            st.markdown("#### 📋 Informasi Pribadi & Kontak Lainnya")
-            c1, c2 = st.columns(2)
-            for i, col in enumerate(sec3_cols):
-                with (c1 if i % 2 == 0 else c2):
-                    unique_key = f"sec3_{i}_{col}"
-                    val_data = person.get(col, '')
-                    val_str = '' if pd.isna(val_data) else str(val_str)
-                    edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
-
-            st.markdown("---")
-            submitted = st.form_submit_button("💾 Simpan Perubahan Secara Permanen ke GitHub", use_container_width=True)
+            submitted = st.form_submit_button("💾 Simpan Perubahan Ini ke GitHub", use_container_width=True)
             
             if submitted:
-                with st.spinner("Menyimpan perubahan langsung ke file CSV di GitHub..."):
+                with st.spinner("Menyimpan perubahan langsung ke GitHub..."):
                     try:
-                        # Cari ulang baris berdasarkan ID unik yang sedang aktif agar akurat 100%
-                        matched_rows = st.session_state.df_data[st.session_state.df_data[id_col].astype(str) == str(st.session_state.get('active_id'))]
-                        if not matched_rows.empty:
-                            target_idx = matched_rows.index[0]
-                            
-                            for col_name, val in edited_values.items():
-                                if st.session_state.df_data[col_name].dtype in ['float64', 'int64']:
-                                    if val.strip() == '':
-                                        st.session_state.df_data.loc[target_idx, col_name] = float('nan')
-                                    else:
-                                        try:
-                                            st.session_state.df_data.loc[target_idx, col_name] = float(val) if '.' in val else int(val)
-                                        except:
-                                            st.session_state.df_data.loc[target_idx, col_name] = val
-                                else:
-                                    st.session_state.df_data.loc[target_idx, col_name] = val
-
-                            g = Github(st.secrets["GITHUB_TOKEN"])
-                            repo = g.get_repo(REPO_NAME)
-                            file_content = repo.get_contents(FILE_PATH)
-                            
-                            updated_csv_bytes = st.session_state.df_data.to_csv(index=False, encoding="latin1").encode("latin1")
-                            repo.update_file(
-                                path=FILE_PATH,
-                                message=f"Update data nasional ID {curr_id}",
-                                content=updated_csv_bytes,
-                                sha=file_content.sha
-                            )
-                            
-                            st.cache_data.clear()
-                            del st.session_state['df_data']
-                            st.success("✅ Perubahan berhasil disimpan permanen ke file CSV GitHub!")
-                            st.rerun()
+                        # Update langsung ke dataframe di session state
+                        if st.session_state.df_data[selected_col_to_edit].dtype in ['float64', 'int64']:
+                            if new_value.strip() == '':
+                                st.session_state.df_data.loc[target_row_idx, selected_col_to_edit] = float('nan')
+                            else:
+                                try:
+                                    st.session_state.df_data.loc[target_row_idx, selected_col_to_edit] = float(new_value) if '.' in new_value else int(new_value)
+                                except:
+                                    st.session_state.df_data.loc[target_row_idx, selected_col_to_edit] = new_value
                         else:
-                            st.error("Gagal menemukan baris data berdasarkan ID aktif.")
+                            st.session_state.df_data.loc[target_row_idx, selected_col_to_edit] = new_value
+
+                        # Kirim ke GitHub
+                        g = Github(st.secrets["GITHUB_TOKEN"])
+                        repo = g.get_repo(REPO_NAME)
+                        file_content = repo.get_contents(FILE_PATH)
+                        
+                        updated_csv_bytes = st.session_state.df_data.to_csv(index=False, encoding="latin1").encode("latin1")
+                        repo.update_file(
+                            path=FILE_PATH,
+                            message=f"Update {selected_col_to_edit} untuk ID {curr_id}",
+                            content=updated_csv_bytes,
+                            sha=file_content.sha
+                        )
+                        
+                        st.success(f"✅ Berhasil mengubah **{selected_col_to_edit}** menjadi **{new_value}** dan tersimpan permanen di GitHub!")
+                        st.balloons()
                     except Exception as e:
                         st.error(f"Gagal menyimpan ke GitHub: {e}")
+                        
+        with st.expander("👁️ Lihat Seluruh Data Lengkap Karyawan Ini"):
+            st.dataframe(pd.DataFrame([person]), use_container_width=True)
+            
     else:
         st.info(f"Ditemukan **{len(hasil_cari)} data** yang cocok:")
         st.dataframe(hasil_cari, use_container_width=True)
