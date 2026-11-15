@@ -17,15 +17,15 @@ FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 st.title("🦅 Dashboard & Editor Data - PT. Gelatik Supra")
 st.markdown("Kelola, cari, dan edit data personil. Perubahan akan **langsung tersimpan secara permanen ke file CSV di GitHub**.")
 
-# 1. Fungsi membaca data langsung dari GitHub dengan aman
+# 1. Fungsi membaca data langsung dari GitHub
 def load_data_from_github():
     g = Github(st.secrets["GITHUB_TOKEN"])
     repo = g.get_repo(REPO_NAME)
     file_content = repo.get_contents(FILE_PATH)
     
-    # Mengambil isi file dengan decode biner yang aman dari error encoding
-    decoded_bytes = file_content.decoded_content
-    df = pd.read_csv(io.BytesIO(decoded_bytes), encoding="latin1")
+    # Mengubah raw bytes langsung menggunakan decode latin1 yang aman
+    csv_string = file_content.decoded_content.decode("latin1")
+    df = pd.read_csv(io.StringIO(csv_string), encoding="latin1")
     
     # Filter khusus PT. Gelatik Supra
     if 'NAMA PERUSAHAAN' in df.columns:
@@ -48,18 +48,18 @@ def save_data_to_github(df_updated_gelatik, file_sha, commit_message):
     
     # Ambil file CSV utuh dari GitHub agar data perusahaan lain aman
     original_file = repo.get_contents(FILE_PATH)
-    df_full = pd.read_csv(io.BytesIO(original_file.decoded_content), encoding="latin1")
+    df_full = pd.read_csv(io.StringIO(original_file.decoded_content.decode("latin1")), encoding="latin1")
     
     # Update data perusahaan Gelatik ke dataframe utama
     df_full.update(df_updated_gelatik)
     
-    # Konversi kembali ke format CSV ber-encoding latin1
-    updated_csv_bytes = df_full.to_csv(index=False, encoding="latin1").encode("latin1")
+    # Konversi kembali ke string CSV
+    updated_csv_string = df_full.to_csv(index=False, encoding="latin1")
     
     repo.update_file(
         path=FILE_PATH,
         message=commit_message,
-        content=updated_csv_bytes,
+        content=updated_csv_string,
         sha=file_sha
     )
 
@@ -153,6 +153,6 @@ if search_query:
         st.info(f"Ditemukan **{len(hasil_cari)} data** yang mirip. Ketik nama lebih spesifik agar hanya 1 orang yang muncul untuk diedit:")
         st.dataframe(hasil_cari[['ID Personil', 'Nama', 'Nama Project', 'Area CBS', 'Handphone']], use_container_width=True)
 else:
-    st.info("💡 Ketik nama karyawan atau ID personil pada kotak pencarian di on atas untuk mulai melihat dan mengedit informasinya.")
+    st.info("💡 Ketik nama karyawan atau ID personil pada kotak pencarian di atas untuk mulai melihat dan mengedit informasinya.")
     with st.expander("Lihat Seluruh Tabel Data PT. Gelatik Supra"):
         st.dataframe(df, use_container_width=True)
