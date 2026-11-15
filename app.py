@@ -195,20 +195,15 @@ if 'selected_unique_id' in st.session_state:
                         df_live.columns = df_live.columns.astype(str).str.strip()
                         df_live = df_live.fillna("")
                         
-                        # Cari baris pada data live GitHub berdasarkan ID
-                        live_id_col = next((col for col in df_live.columns if 'id' in col.lower() or 'personil' in col.lower()), df_live.columns[0])
-                        matched_live = df_live[df_live[live_id_col].astype(str).str.strip().str.lower() == target_id.strip().lower()]
+                        # Pencarian baris live super longgar: cari baris mana yang mengandung target_id
+                        live_idx = None
+                        for idx_l, row_l in df_live.iterrows():
+                            row_full_str = " ".join(row_l.values).lower()
+                            if target_id.strip().lower() in row_full_str:
+                                live_idx = idx_l
+                                break
                         
-                        if matched_live.empty:
-                            for col in df_live.columns:
-                                m = df_live[df_live[col].astype(str).str.strip().str.lower() == target_id.strip().lower()]
-                                if not m.empty:
-                                    matched_live = m
-                                    break
-                        
-                        if not matched_live.empty:
-                            live_idx = matched_live.index[0]
-                            
+                        if live_idx is not None:
                             for col_name, val in edited_values.items():
                                 if col_name in df_live.columns:
                                     df_live.loc[live_idx, col_name] = val
