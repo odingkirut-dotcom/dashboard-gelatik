@@ -53,8 +53,8 @@ if 'form_version' not in st.session_state:
 
 # Tombol muat ulang data terbaru
 if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
-    if 'selected_unique_id' in st.session_state:
-        del st.session_state['selected_unique_id']
+    if 'selected_row_idx' in st.session_state:
+        del st.session_state['selected_row_idx']
     st.session_state.form_version += 1
     st.rerun()
 
@@ -69,8 +69,8 @@ search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: 
 
 # Reset pilihan jika kotak pencarian dikosongkan
 if not search_query:
-    if 'selected_unique_id' in st.session_state:
-        del st.session_state['selected_unique_id']
+    if 'selected_row_idx' in st.session_state:
+        del st.session_state['selected_row_idx']
 
 hasil_cari = pd.DataFrame()
 
@@ -89,9 +89,7 @@ if search_query:
 if not hasil_cari.empty:
     if len(hasil_cari) == 1:
         target_row_idx = hasil_cari.index[0]
-        person = df_master.loc[target_row_idx]
-        unique_id_val = str(person.get(id_col, target_row_idx))
-        st.session_state['selected_unique_id'] = unique_id_val
+        st.session_state['selected_row_idx'] = target_row_idx
     else:
         st.warning(f"Ditemukan **{len(hasil_cari)} data** yang cocok dengan kata kunci **'{search_query}'**. Silakan pilih data yang sesuai dari daftar di bawah:")
         
@@ -104,57 +102,43 @@ if not hasil_cari.empty:
             cols_btn[0].markdown(f"**{c_nama}** (ID: `{c_id}`)")
             cols_btn[1].markdown(f"🏢 {c_perusahaan}")
             if cols_btn[2].button("Pilih", key=f"btn_pick_{c_id}_{idx}"):
-                st.session_state['selected_unique_id'] = c_id
+                st.session_state['selected_row_idx'] = idx
                 st.rerun()
         
         st.markdown("---")
-        if 'selected_unique_id' in st.session_state:
-            del st.session_state['selected_unique_id']
+        if 'selected_row_idx' in st.session_state:
+            del st.session_state['selected_row_idx']
 else:
     if search_query:
         st.warning(f"Data '{search_query}' tidak ditemukan di dalam file CSV GitHub.")
-    if 'selected_unique_id' in st.session_state:
-        del st.session_state['selected_unique_id']
+    if 'selected_row_idx' in st.session_state:
+        del st.session_state['selected_row_idx']
 
-# Tampilkan Form Edit Berdasarkan ID Unik yang Dipilih
-if 'selected_unique_id' in st.session_state:
-    target_id = st.session_state['selected_unique_id']
+# Tampilkan Form Edit Berdasarkan Indeks Baris yang Dipilih
+if 'selected_row_idx' in st.session_state:
+    target_idx = st.session_state['selected_row_idx']
     
-    try:
-        df_fresh = load_data_from_github()
-    except:
-        df_fresh = df_master
-
-    # Cari baris berdasarkan ID pada data master
-    matched_df = df_fresh[df_fresh[id_col].astype(str).str.strip().str.lower() == target_id.strip().lower()]
-    if matched_df.empty:
-        for col in df_fresh.columns:
-            m = df_fresh[df_fresh[col].astype(str).str.strip().str.lower() == target_id.strip().lower()]
-            if not m.empty:
-                matched_df = m
-                break
-
-    if not matched_df.empty:
-        active_row_idx = matched_df.index[0]
-        person = df_fresh.loc[active_row_idx]
+    # Ambil data dari master berdasarkan indeks
+    if target_idx < len(df_master):
+        person = df_master.loc[target_idx]
 
         curr_nama = str(person.get(nama_col, '-'))
         curr_id = str(person.get(id_col, '-'))
         curr_perusahaan = str(person.get('NAMA PERUSAHAAN', '-'))
 
-        form_key = f"form_edit_{target_id}_{st.session_state.form_version}"
+        form_key = f"form_edit_{target_idx}_{st.session_state.form_version}"
         with st.form(form_key):
             st.markdown(f"### ✏️ Edit Data: **{curr_nama}**")
             st.info(f"🆔 **ID Personil:** {curr_id}  |  🏢 **Perusahaan:** {curr_perusahaan}")
             st.caption("Ubah data apa saja pada kolom di bawah ini, lalu klik tombol Simpan.")
 
             edited_values = {}
-            valid_cols = [c for c in df_fresh.columns if not str(c).startswith('Unnamed:')]
+            valid_cols = [c for c in df_master.columns if not str(c).startswith('Unnamed:')]
             
             c1, c2 = st.columns(2)
             for i, col in enumerate(valid_cols):
                 with (c1 if i % 2 == 0 else c2):
-                    unique_key = f"fld_{target_id}_{col}_{st.session_state.form_version}"
+                    unique_key = f"fld_{target_idx}_{col}_{st.session_state.form_version}"
                     val_data = person.get(col, '')
                     val_str = '' if pd.isna(val_data) else str(val_data)
                     edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
@@ -195,24 +179,17 @@ if 'selected_unique_id' in st.session_state:
                         df_live.columns = df_live.columns.astype(str).str.strip()
                         df_live = df_live.fillna("")
                         
-                        # Pencarian baris live super longgar: cari baris mana yang mengandung target_id
-                        live_idx = None
-                        for idx_l, row_l in df_live.iterrows():
-                            row_full_str = " ".join(row_l.values).lower()
-                            if target_id.strip().lower() in row_full_str:
-                                live_idx = idx_l
-                                break
-                        
-                        if live_idx is not None:
+                        # Simpan langsung ke indeks baris yang sama persis pada data live GitHub
+                        if target_idx < len(df_live):
                             for col_name, val in edited_values.items():
                                 if col_name in df_live.columns:
-                                    df_live.loc[live_idx, col_name] = val
+                                    df_live.loc[target_idx, col_name] = val
 
                             updated_csv_str = df_live.to_csv(index=False, encoding="latin1")
                             updated_b64 = base64.b64encode(updated_csv_str.encode("latin1")).decode("utf-8")
                             
                             payload = {
-                                "message": f"Update data nasional ID {target_id}",
+                                "message": f"Update data nasional baris {target_idx}",
                                 "content": updated_b64,
                                 "sha": current_sha
                             }
@@ -227,11 +204,11 @@ if 'selected_unique_id' in st.session_state:
                             else:
                                 st.error(f"Gagal menyimpan ke GitHub API: {resp_put.text}")
                         else:
-                            st.error(f"Gagal menemukan ID '{target_id}' pada file live terbaru GitHub.")
+                            st.error("Indeks baris pada file GitHub berbeda. Silakan muat ulang data.")
                     except Exception as e:
                         st.error(f"Gagal menyimpan ke GitHub: {e}")
     else:
-        st.error("Data tidak ditemukan pada data terbaru. Silakan cari ulang.")
+        st.error("Indeks data tidak valid. Silakan cari ulang.")
 else:
     if not search_query:
         st.info("💡 Ketik nama karyawan atau ID pada kotak pencarian di atas untuk mulai mencari.")
