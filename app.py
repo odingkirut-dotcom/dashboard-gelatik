@@ -37,10 +37,6 @@ except Exception as e:
 
 df = st.session_state.df_data
 
-# Otomatis deteksi kolom nama dan ID personil secara presisi
-nama_col = next((col for col in df.columns if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower()), df.columns[1])
-id_col = next((col for col in df.columns if 'id' in str(col).lower() or 'personil' in str(col).lower()), df.columns[0])
-
 # Tombol muat ulang data terbaru
 if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     st.cache_data.clear()
@@ -48,31 +44,36 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
         del st.session_state['df_data']
     st.rerun()
 
-# --- PENCARIAN PRESISI (HANYA PADA KOLOM NAMA & ID) ---
+# --- PENCARIAN PINTAR MULTI-KATA DI SELURUH KOLOM ---
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
-search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RUKOYAH atau ID-JK0158):")
+search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RIKA SITI RUKOYAH):")
 
 if search_query:
-    query_clean = search_query.strip()
+    # Memecah kata kunci (misal: "RIKA", "SITI", "RUKOYAH")
+    keywords = search_query.strip().split()
     
-    # Pencarian HANYA difokuskan pada kolom Nama dan ID Personil agar tidak nyasar
-    mask = (
-        df[nama_col].astype(str).str.contains(query_clean, case=False, na=False) |
-        df[id_col].astype(str).str.contains(query_clean, case=False, na=False)
-    )
+    # Mencari baris yang mengandung SEMUA kata yang diketik di baris tersebut
+    mask = pd.Series(True, index=df.index)
+    df_str = df.astype(str)
+    for kw in keywords:
+        kw_mask = df_str.apply(lambda row: row.str.contains(kw, case=False, na=False)).any(axis=1)
+        mask = mask & kw_mask
+        
     hasil_cari = df[mask]
 
     if len(hasil_cari) == 0:
-        st.warning(f"Data dengan kata kunci '{search_query}' tidak ditemukan pada kolom Nama atau ID.")
+        st.warning("Data tidak ditemukan. Coba ketik sebagian nama saja (misal: 'Rukoyah' atau ID personilnya).")
     
     elif len(hasil_cari) == 1:
         idx_row = hasil_cari.index[0]
         person = df.loc[idx_row]
 
+        # Ambil kolom nama jika ada untuk ditampilkan di sukses header
+        nama_col = next((col for col in df.columns if 'nama' in str(col).lower()), df.columns[1])
         nama_val = person.get(nama_col, 'Karyawan')
         perusahaan_val = person.get('NAMA PERUSAHAAN', 'Tidak diketahui')
 
-        st.success(f"Ditemukan tepat satu data untuk: **{nama_val}** (Perusahaan: **{perusahaan_val}**)")
+        st.success(f"Ditemukan tepat satu data untuk baris ini! (Perusahaan: **{perusahaan_val}**)")
 
         # Formulir Edit dengan Tampilan Tab Modern & Kompak
         with st.form("form_edit_karyawan_modern"):
@@ -142,7 +143,7 @@ if search_query:
     
     else:
         st.info(f"Ditemukan **{len(hasil_cari)} data** yang mirip. Silakan ketik nama lebih spesifik agar form edit muncul:")
-        st.dataframe(hasil_cari[[id_col, nama_col, 'NAMA PERUSAHAAN', 'Nama Project'] if 'Nama Project' in df.columns else [id_col, nama_col]], use_container_width=True)
+        st.dataframe(hasil_cari, use_container_width=True)
 else:
     st.info("💡 Ketik nama karyawan atau ID pada kotak pencarian di atas untuk mulai mencari.")
     with st.expander("Lihat Seluruh Tabel Database Nasional"):
