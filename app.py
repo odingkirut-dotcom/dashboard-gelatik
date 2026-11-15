@@ -1,12 +1,10 @@
 import streamlit as st
 import pandas as pd
 import requests
-import base64
 import io
-import urllib.parse
 import time
+import base64
 
-# Konfigurasi Halaman Web
 st.set_page_config(
     page_title="Dashboard Database Nasional",
     page_icon="🦅",
@@ -16,216 +14,146 @@ st.set_page_config(
 st.title("🦅 Dashboard Data - Database Nasional")
 st.markdown("Kelola dan edit data personil dengan cepat. Perubahan tersimpan **permanen ke GitHub**.")
 
-# --- PENGATURAN GITHUB ---
 REPO_NAME = "odingkirut-dotcom/dashboard-gelatik"
 FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
-# Menggunakan enkode URL yang tepat untuk API GitHub
-encoded_path = urllib.parse.quote(FILE_PATH)
-
-# Memuat data langsung via Raw URL GitHub dengan anti-cache
-def load_data_from_github():
-    # Coba beberapa variasi URL Raw untuk menjamin tembus tanpa 404
-    urls = [
-        f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}?t={time.time()}",
-        f"https://raw.githubusercontent.com/{REPO_NAME}/main/Summary%20Database%20Nasional%2013%20November%202026.csv?t={time.time()}"
-    ]
-    
-    resp = None
-    for url in urls:
-        resp = requests.get(url)
-        if resp.status_code == 200:
-            break
-            
-    if resp and resp.status_code == 200:
-        file_decoded = resp.content.decode("latin1")
-        if "404: Not Found" in file_decoded[:50]:
-            raise Exception("File CSV di GitHub sedang rusak berisi 404. Harap restore file CSV asli Anda di GitHub terlebih dahulu.")
-        df = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
+# Fungsi untuk memuat data dengan aman
+def load_data():
+    url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/Summary%20Database%20Nasional%2013%20November%202026.csv?t={time.time()}"
+    resp = requests.get(url)
+    if resp.status_code == 200:
+        content = resp.content.decode("latin1")
+        if "404: Not Found" in content[:50]:
+            raise Exception("File CSV di GitHub masih berisi teks 404. Harap pastikan file CSV sudah di-restore di GitHub.")
+        df = pd.read_csv(io.StringIO(content), encoding="latin1", dtype=str)
         df.columns = df.columns.astype(str).str.strip()
-        df = df.fillna("")
-        return df
+        return df.fillna("")
     else:
-        raise Exception("Gagal mengunduh file CSV dari GitHub. Periksa kembali nama repository dan file Anda.")
+        raise Exception(f"Gagal mengunduh file (Kode: {resp.status_code})")
 
 try:
-    with st.spinner("Mengambil database nasional terbaru dari GitHub..."):
-        df_master = load_data_from_github()
+    with st.spinner("Memuat database dari GitHub..."):
+        df_master = load_data()
 except Exception as e:
-    st.error(f"Gagal memuat data. Detail Error: {e}")
+    st.error(f"{e}")
     st.stop()
 
-# Inisialisasi version counter untuk mereset widget form secara total
 if 'form_version' not in st.session_state:
     st.session_state.form_version = 0
 
-# Tombol muat ulang data terbaru
 if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     if 'selected_row_idx' in st.session_state:
         del st.session_state['selected_row_idx']
     st.session_state.form_version += 1
     st.rerun()
 
-# Deteksi kolom secara aman
 cols_list = list(df_master.columns)
-id_col = next((col for col in cols_list if 'id' in col.lower() or 'personil' in col.lower()), cols_list[0])
-nama_col = next((col for col in cols_list if 'nama' in col.lower() and 'perusahaan' not in col.lower() and 'ibu' not in col.lower()), cols_list[1] if len(cols_list) > 1 else cols_list[0])
+id_col = next((c for c in cols_list if 'id' in c.lower() or 'personil' in c.lower()), cols_list[0])
+nama_col = next((c for c in cols_list if 'nama' in c.lower() and 'perusahaan' not in c.lower()), cols_list[1] if len(cols_list) > 1 else cols_list[0])
 
-# --- PENCARIAN SUPER EKSTRIM (MENCOCOKKAN SEMUA SEL TANPA KECUALI) ---
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
-search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: ID-JT000303):", key="input_search_query")
+search_query = st.text_input("Ketik Nama Lengkap atau ID:", key="search_box")
 
-# Reset pilihan jika kotak pencarian dikosongkan
-if not search_query:
-    if 'selected_row_idx' in st.session_state:
-        del st.session_state['selected_row_idx']
-
-hasil_cari = pd.DataFrame()
+if not search_query and 'selected_row_idx' in st.session_state:
+    del st.session_state['selected_row_idx']
 
 if search_query:
-    query_clean = search_query.strip().lower()
-    
-    match_indices = []
+    q = search_query.strip().lower()
+    match_idx = []
     for idx, row in df_master.iterrows():
-        combined_row_text = " ".join(row.values).lower()
-        if query_clean in combined_row_text:
-            match_indices.append(idx)
-            
-    hasil_cari = df_master.loc[match_indices]
-
-# Logika Penanganan Hasil Pencarian
-if not hasil_cari.empty:
-    if len(hasil_cari) == 1:
-        target_row_idx = hasil_cari.index[0]
-        st.session_state['selected_row_idx'] = target_row_idx
+        if q in " ".join(row.values).lower():
+            match_idx.append(idx)
+    hasil_cari = df_master.loc[match_idx]
+    
+    if not hasil_cari.empty:
+        if len(hasil_cari) == 1:
+            st.session_state['selected_row_idx'] = hasil_cari.index[0]
+        else:
+            st.warning(f"Ditemukan {len(hasil_cari)} data. Pilih salah satu:")
+            for idx, row in hasil_cari.iterrows():
+                c_id = row.get(id_col, '-')
+                c_nama = row.get(nama_col, '-')
+                c_pt = row.get('NAMA PERUSAHAAN', '')
+                if st.button(f"{c_nama} ({c_id}) - {c_pt}", key=f"btn_{idx}"):
+                    st.session_state['selected_row_idx'] = idx
+                    st.rerun()
+            st.stop()
     else:
-        st.warning(f"Ditemukan **{len(hasil_cari)} data** yang cocok dengan kata kunci **'{search_query}'**. Silakan pilih data yang sesuai dari daftar di bawah:")
-        
-        for idx, row in hasil_cari.iterrows():
-            c_id = str(row.get(id_col, '-'))
-            c_nama = str(row.get(nama_col, '-'))
-            c_perusahaan = str(row.get('NAMA PERUSAHAAN', ''))
-            
-            cols_btn = st.columns([3, 2, 1])
-            cols_btn[0].markdown(f"**{c_nama}** (ID: `{c_id}`)")
-            cols_btn[1].markdown(f"🏢 {c_perusahaan}")
-            if cols_btn[2].button("Pilih", key=f"btn_pick_{c_id}_{idx}"):
-                st.session_state['selected_row_idx'] = idx
-                st.rerun()
-        
-        st.markdown("---")
+        st.warning("Data tidak ditemukan.")
         if 'selected_row_idx' in st.session_state:
             del st.session_state['selected_row_idx']
-else:
-    if search_query:
-        st.warning(f"Data '{search_query}' tidak ditemukan di dalam file CSV GitHub.")
-    if 'selected_row_idx' in st.session_state:
-        del st.session_state['selected_row_idx']
 
-# Tampilkan Form Edit Berdasarkan Indeks Baris yang Dipilih
 if 'selected_row_idx' in st.session_state:
-    target_idx = st.session_state['selected_row_idx']
-    
-    if target_idx < len(df_master):
-        person = df_master.loc[target_idx]
-
-        curr_nama = str(person.get(nama_col, '-'))
-        curr_id = str(person.get(id_col, '-'))
-        curr_perusahaan = str(person.get('NAMA PERUSAHAAN', '-'))
-
-        form_key = f"form_edit_{target_idx}_{st.session_state.form_version}"
-        with st.form(form_key):
-            st.markdown(f"### ✏️ Edit Data: **{curr_nama}**")
-            st.info(f"🆔 **ID Personil:** {curr_id}  |  🏢 **Perusahaan:** {curr_perusahaan}")
-            st.caption("Ubah data apa saja pada kolom di bawah ini, lalu klik tombol Simpan.")
-
-            edited_values = {}
-            valid_cols = [c for c in df_master.columns if not str(c).startswith('Unnamed:')]
+    idx_target = st.session_state['selected_row_idx']
+    if idx_target < len(df_master):
+        person = df_master.loc[idx_target]
+        
+        with st.form(f"form_{idx_target}_{st.session_state.form_version}"):
+            st.markdown(f"### ✏️ Edit Data: **{person.get(nama_col, '')}**")
+            st.info(f"ID: {person.get(id_col, '')} | Perusahaan: {person.get('NAMA PERUSAHAAN', '')}")
+            
+            edited_vals = {}
+            valid_cols = [c for c in df_master.columns if not c.startswith('Unnamed:')]
             
             c1, c2 = st.columns(2)
             for i, col in enumerate(valid_cols):
                 with (c1 if i % 2 == 0 else c2):
-                    unique_key = f"fld_{target_idx}_{col}_{st.session_state.form_version}"
-                    val_data = person.get(col, '')
-                    val_str = '' if pd.isna(val_data) else str(val_data)
-                    edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
-
-            st.markdown("---")
+                    val = str(person.get(col, ''))
+                    edited_vals[col] = st.text_input(str(col), value=val, key=f"inp_{idx_target}_{col}")
+            
             submitted = st.form_submit_button("💾 Simpan Perubahan Secara Permanen ke GitHub", use_container_width=True)
             
             if submitted:
-                with st.spinner("Menyimpan perubahan langsung ke GitHub..."):
+                with st.spinner("Menyimpan ke GitHub..."):
                     try:
-                        api_url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}"
+                        api_url = f"https://api.github.com/repos/{REPO_NAME}/contents/Summary%20Database%20Nasional%2013%20November%202026.csv"
                         headers = {
                             "Authorization": f"Bearer {st.secrets['GITHUB_TOKEN']}",
                             "Accept": "application/vnd.github+json"
                         }
                         
-                        # Ambil SHA file terbaru dengan pengaman ketat
-                        resp_get = requests.get(api_url, headers=headers)
-                        if resp_get.status_code != 200:
-                            st.error(f"GAGAL: Tidak dapat mengakses API GitHub (Status {resp_get.status_code}). Periksa kembali GITHUB_TOKEN Anda. Penyimpanan dibatalkan agar file aman.")
+                        r_get = requests.get(api_url, headers=headers)
+                        if r_get.status_code != 200:
+                            st.error(f"Gagal mengambil file dari API GitHub (Status: {r_get.status_code})")
                             st.stop()
                             
-                        file_data = resp_get.json()
-                        if "sha" not in file_data:
-                            st.error("GAGAL: Struktur data dari GitHub tidak valid. Penyimpanan dibatalkan.")
-                            st.stop()
-                            
-                        current_sha = file_data["sha"]
+                        j_data = r_get.json()
+                        sha = j_data['sha']
                         
-                        # Unduh isi file live untuk memastikan data sinkron
-                        download_url = file_data.get("download_url")
-                        if download_url:
-                            resp_dl = requests.get(f"{download_url}&t={time.time()}")
-                            file_decoded = resp_dl.content.decode("latin1")
-                        else:
-                            file_content_b64 = file_data["content"]
-                            file_decoded = base64.b64decode(file_content_b64).decode("latin1")
-                            
-                        if "404: Not Found" in file_decoded[:50]:
-                            st.error("GAGAL: File CSV di GitHub saat ini berisi teks 404. Harap restore file CSV asli Anda di GitHub terlebih dahulu.")
-                            st.stop()
-                            
-                        df_live = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
+                        # Ambil konten terbaru live
+                        r_dl = requests.get(f"{j_data['download_url']}?t={time.time()}")
+                        df_live = pd.read_csv(io.StringIO(r_dl.content.decode("latin1")), encoding="latin1", dtype=str)
                         df_live.columns = df_live.columns.astype(str).str.strip()
                         df_live = df_live.fillna("")
                         
-                        # Update baris berdasarkan indeks
-                        if target_idx < len(df_live):
-                            for col_name, val in edited_values.items():
-                                if col_name in df_live.columns:
-                                    df_live.loc[target_idx, col_name] = val
-                        else:
-                            # Jika baris melebihi, tambahkan sebagai baris baru
-                            new_row = {col: edited_values.get(col, "") for col in df_live.columns}
-                            df_live = pd.concat([df_live, pd.DataFrame([new_row])], ignore_index=True)
-
-                        updated_csv_str = df_live.to_csv(index=False, encoding="latin1")
-                        updated_b64 = base64.b64encode(updated_csv_str.encode("latin1")).decode("utf-8")
+                        # Update baris
+                        for k, v in edited_vals.items():
+                            if k in df_live.columns:
+                                df_live.loc[idx_target, k] = v
+                                
+                        csv_str = df_live.to_csv(index=False, encoding="latin1")
+                        b64_content = base64.b64encode(csv_str.encode("latin1")).decode("utf-8")
                         
                         payload = {
-                            "message": f"Update data nasional baris {target_idx}",
-                            "content": updated_b64,
-                            "sha": current_sha
+                            "message": f"Update row {idx_target} via Dashboard",
+                            "content": b64_content,
+                            "sha": sha
                         }
                         
-                        resp_put = requests.put(api_url, headers=headers, json=payload)
-                        if resp_put.status_code in [200, 201]:
+                        r_put = requests.put(api_url, headers=headers, json=payload)
+                        if r_put.status_code in [200, 201]:
                             st.session_state.form_version += 1
-                            st.success("✅ Perubahan berhasil disimpan permanen ke file CSV GitHub!")
+                            st.success("✅ Perubahan berhasil disimpan permanen ke GitHub!")
                             st.balloons()
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error(f"Gagal menyimpan ke GitHub API: {resp_put.text}. File CSV Anda TIDAK DITIMPA.")
-                    except Exception as e:
-                        st.error(f"Terjadi kesalahan sistem saat menyimpan: {e}")
+                            st.error(f"Gagal menyimpan ke GitHub: {r_put.text}")
+                    except Exception as err:
+                        st.error(f"Error: {err}")
     else:
-        st.error("Indeks data tidak valid. Silakan cari ulang.")
+        st.error("Indeks data tidak valid.")
 else:
-    if not search_query:
-        st.info("💡 Ketik nama karyawan atau ID pada kotak pencarian di atas untuk mulai mencari.")
-        with st.expander("Lihat Seluruh Tabel Database Nasional"):
-            st.dataframe(df_master, use_container_width=True)
+    st.info("💡 Ketik nama atau ID pada kolom pencarian di atas.")
+    with st.expander("Lihat Seluruh Tabel"):
+        st.dataframe(df_master, use_container_width=True)
