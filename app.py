@@ -10,22 +10,20 @@ st.set_page_config(
     layout="wide"
 )
 
+st.title("🦅 Dashboard & Editor Data - PT. Gelatik Supra")
+st.markdown("Kelola, cari, dan edit data personil. Perubahan akan **langsung tersimpan secara permanen ke file CSV di GitHub**.")
+
 # --- PENGATURAN GITHUB ---
 REPO_NAME = "odingkirut-dotcom/dashboard-gelatik"
 FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
-st.title("🦅 Dashboard & Editor Data - PT. Gelatik Supra")
-st.markdown("Kelola, cari, dan edit data personil. Perubahan akan **langsung tersimpan secara permanen ke file CSV di GitHub**.")
+# Menggunakan Raw URL GitHub untuk membaca data dengan stabil & cepat
+RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{FILE_PATH}"
 
-# 1. Fungsi membaca data langsung dari GitHub secara aman (Tanpa cek encoding PyGithub)
+# Fungsi membaca data langsung via URL mentah (Aman dari error encoding PyGithub)
+@st.cache_data(ttl=10)
 def load_data_from_github():
-    g = Github(st.secrets["GITHUB_TOKEN"])
-    repo = g.get_repo(REPO_NAME)
-    file_content = repo.get_contents(FILE_PATH)
-    
-    # Ambil bytes mentah dan decode langsung ke string latin1
-    raw_text = file_content.decoded_content.decode("latin1")
-    df = pd.read_csv(io.StringIO(raw_text), encoding="latin1")
+    df = pd.read_csv(RAW_URL, encoding="latin1")
     
     # Filter khusus PT. Gelatik Supra
     if 'NAMA PERUSAHAAN' in df.columns:
@@ -39,47 +37,46 @@ def load_data_from_github():
     if 'Handphone' in df_gelatik.columns:
         df_gelatik['Handphone'] = df_gelatik['Handphone'].astype(str)
         
-    return df_gelatik, file_content.sha
+    return df_gelatik
 
-# 2. Fungsi menyimpan perubahan permanen ke GitHub
-def save_data_to_github(df_updated_gelatik, file_sha, commit_message):
+# Fungsi khusus untuk menyimpan perubahan permanen ke GitHub menggunakan Token
+def save_data_to_github(df_updated_gelatik, commit_message):
     g = Github(st.secrets["GITHUB_TOKEN"])
     repo = g.get_repo(REPO_NAME)
     
-    # Ambil file CSV utuh dari GitHub agar data perusahaan lain aman
-    original_file = repo.get_contents(FILE_PATH)
-    orig_text = original_file.decoded_content.decode("latin1")
-    df_full = pd.read_csv(io.StringIO(orig_text), encoding="latin1")
+    # Ambil file asli dari repository untuk mendapatkan SHA terbaru & data perusahaan lain
+    file_content = repo.get_contents(FILE_PATH)
+    df_full = pd.read_csv(io.BytesIO(file_content.decoded_content), encoding="latin1")
     
     # Update data perusahaan Gelatik ke dataframe utama
     df_full.update(df_updated_gelatik)
     
-    # Konversi kembali ke string CSV
-    updated_csv_string = df_full.to_csv(index=False, encoding="latin1")
+    # Konversi kembali ke format byte CSV
+    updated_csv_bytes = df_full.to_csv(index=False, encoding="latin1").encode("latin1")
     
     repo.update_file(
         path=FILE_PATH,
         message=commit_message,
-        content=updated_csv_string,
-        sha=file_sha
+        content=updated_csv_bytes,
+        sha=file_content.sha
     )
 
 # Memuat data ke Session State
 try:
     if 'df_data' not in st.session_state:
         with st.spinner("Mengambil database terbaru dari GitHub..."):
-            df_loaded, sha_loaded = load_data_from_github()
-            st.session_state.df_data = df_loaded
-            st.session_state.file_sha = sha_loaded
+            st.session_state.df_data = load_data_from_github()
 except Exception as e:
-    st.error(f"Gagal terhubung ke GitHub. Pastikan GITHUB_TOKEN sudah benar di Secrets. Error: {e}")
+    st.error(f"Gagal memuat data. Detail Error: {e}")
     st.stop()
 
 df = st.session_state.df_data
 
-# Tombol untuk memuat ulang data terbaru
+# Tombol muat ulang data terbaru
 if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
-    del st.session_state['df_data']
+    st.cache_data.clear()
+    if 'df_data' in st.session_state:
+        del st.session_state['df_data']
     st.rerun()
 
 # --- PENCARIAN & FORM EDIT SPESIFIK ---
@@ -137,14 +134,13 @@ if search_query:
                         st.session_state.df_data.loc[idx_row, 'Sub Area'] = new_sub_area
                         st.session_state.df_data.loc[idx_row, 'Nama TL'] = new_tl
 
-                        # Simpan permanen ke GitHub
+                        # Simpan permanen ke GitHub menggunakan token
                         save_data_to_github(
                             st.session_state.df_data,
-                            st.session_state.file_sha,
                             f"Update data karyawan: {new_nama}"
                         )
                         
-                        # Reset cache state agar memuat data baru
+                        st.cache_data.clear()
                         del st.session_state['df_data']
                         st.success(f"✅ Perubahan untuk **{new_nama}** berhasil disimpan permanen ke file CSV GitHub!")
                         st.rerun()
