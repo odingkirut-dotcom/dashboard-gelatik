@@ -12,7 +12,7 @@ st.set_page_config(
 st.title("📊 Dashboard Database Nasional")
 st.markdown("Menampilkan seluruh data personil per **13 November 2026**.")
 
-# Fungsi untuk memuat data secara lengkap tanpa filter perusahaan
+# Fungsi untuk memuat data
 @st.cache_data
 def load_data():
     df = pd.read_csv("Summary Database Nasional 13 November 2026.csv", encoding="latin1")
@@ -73,10 +73,8 @@ search_name = st.text_input("Cari berdasarkan Nama Karyawan/Personil:")
 
 filtered_df = df.copy()
 if search_name:
-    keywords = [kw.strip() for kw in search_name.split() if kw.strip()]
-    if keywords:
-        pattern = '|'.join(keywords)
-        filtered_df = filtered_df[filtered_df['Nama'].str.contains(pattern, case=False, na=False)]
+    # Mencari string persis sesuai yang diketik (tidak di-split/dipecah kata-katanya)
+    filtered_df = filtered_df[filtered_df['Nama'].str.contains(search_name.strip(), case=False, na=False)]
 
 st.dataframe(filtered_df, use_container_width=True)
 
