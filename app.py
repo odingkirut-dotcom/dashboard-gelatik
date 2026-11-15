@@ -42,8 +42,8 @@ if 'form_version' not in st.session_state:
     st.session_state.form_version = 0
 
 if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
-    if 'selected_person_id' in st.session_state:
-        del st.session_state['selected_person_id']
+    if 'selected_unique_key' in st.session_state:
+        del st.session_state['selected_unique_key']
     st.session_state.form_version += 1
     st.rerun()
 
@@ -54,8 +54,8 @@ nama_col = next((c for c in cols_list if 'nama' in c.lower() and 'perusahaan' no
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
 search_query = st.text_input("Ketik Nama Lengkap atau ID:", key="search_box")
 
-if not search_query and 'selected_person_id' in st.session_state:
-    del st.session_state['selected_person_id']
+if not search_query and 'selected_unique_key' in st.session_state:
+    del st.session_state['selected_unique_key']
 
 if search_query:
     q = search_query.strip().lower()
@@ -68,34 +68,37 @@ if search_query:
     if not hasil_cari.empty:
         if len(hasil_cari) == 1:
             row_item = hasil_cari.iloc[0]
-            st.session_state['selected_person_id'] = str(row_item.get(id_col, '')).strip()
+            st.session_state['selected_unique_key'] = str(row_item.get(id_col, row_item.get(nama_col, '')))
         else:
             st.warning(f"Ditemukan {len(hasil_cari)} data. Pilih salah satu:")
             for idx, row in hasil_cari.iterrows():
-                c_id = str(row.get(id_col, '-')).strip()
+                c_id = str(row.get(id_col, '-'))
                 c_nama = str(row.get(nama_col, '-'))
                 c_pt = str(row.get('NAMA PERUSAHAAN', ''))
-                if st.button(f"{c_nama} (ID: {c_id}) - {c_pt}", key=f"btn_{c_id}_{idx}"):
-                    st.session_state['selected_person_id'] = c_id
+                unique_identifier = c_id if c_id != '-' else c_nama
+                if st.button(f"{c_nama} ({c_id}) - {c_pt}", key=f"btn_{unique_identifier}_{idx}"):
+                    st.session_state['selected_unique_key'] = unique_identifier
                     st.rerun()
             st.stop()
     else:
         st.warning("Data tidak ditemukan.")
-        if 'selected_person_id' in st.session_state:
-            del st.session_state['selected_person_id']
+        if 'selected_unique_key' in st.session_state:
+            del st.session_state['selected_unique_key']
 
-if 'selected_person_id' in st.session_state:
-    target_id = st.session_state['selected_person_id']
+if 'selected_unique_key' in st.session_state:
+    target_key = st.session_state['selected_unique_key']
     
-    # Cari baris HANYA berdasarkan ID unik (karena ID tidak pernah berubah walau nama diedit)
-    matched_master = df_master[df_master[id_col].astype(str).str.strip() == target_id]
+    # Cari baris berdasarkan ID atau Nama pada data master
+    matched_master = df_master[df_master[id_col].astype(str).str.strip() == target_key]
+    if matched_master.empty:
+        matched_master = df_master[df_master[nama_col].astype(str).str.strip() == target_key]
         
     if not matched_master.empty:
         person = matched_master.iloc[0]
         
-        with st.form(f"form_{target_id}_{st.session_state.form_version}"):
+        with st.form(f"form_{target_key}_{st.session_state.form_version}"):
             st.markdown(f"### ✏️ Edit Data: **{person.get(nama_col, '')}**")
-            st.info(f"🆔 ID: {target_id} | 🏢 Perusahaan: {person.get('NAMA PERUSAHAAN', '')}")
+            st.info(f"ID: {person.get(id_col, '')} | Perusahaan: {person.get('NAMA PERUSAHAAN', '')}")
             
             edited_vals = {}
             valid_cols = [c for c in df_master.columns if not c.startswith('Unnamed:')]
@@ -104,7 +107,7 @@ if 'selected_person_id' in st.session_state:
             for i, col in enumerate(valid_cols):
                 with (c1 if i % 2 == 0 else c2):
                     val = str(person.get(col, ''))
-                    edited_vals[col] = st.text_input(str(col), value=val, key=f"inp_{target_id}_{col}")
+                    edited_vals[col] = st.text_input(str(col), value=val, key=f"inp_{target_key}_{col}")
             
             submitted = st.form_submit_button("💾 Simpan Perubahan Secara Permanen ke GitHub", use_container_width=True)
             
@@ -131,8 +134,10 @@ if 'selected_person_id' in st.session_state:
                         df_live.columns = df_live.columns.astype(str).str.strip()
                         df_live = df_live.fillna("")
                         
-                        # Cari baris di file LIVE GitHub STRICTLY berdasarkan ID Unik
-                        live_match = df_live[df_live[id_col].astype(str).str.strip() == target_id]
+                        # Cari baris yang tepat di file LIVE GitHub berdasarkan ID atau Nama
+                        live_match = df_live[df_live[id_col].astype(str).str.strip() == target_key]
+                        if live_match.empty:
+                            live_match = df_live[df_live[nama_col].astype(str).str.strip() == target_key]
                             
                         if not live_match.empty:
                             live_idx = live_match.index[0]
@@ -146,7 +151,7 @@ if 'selected_person_id' in st.session_state:
                             b64_content = base64.b64encode(csv_str.encode("latin1")).decode("utf-8")
                             
                             payload = {
-                                "message": f"Update data ID {target_id} via Dashboard",
+                                "message": f"Update data untuk {target_key} via Dashboard",
                                 "content": b64_content,
                                 "sha": sha
                             }
@@ -161,7 +166,7 @@ if 'selected_person_id' in st.session_state:
                             else:
                                 st.error(f"Gagal menyimpan ke GitHub: {r_put.text}")
                         else:
-                            st.error(f"Data dengan ID '{target_id}' tidak ditemukan pada file live GitHub terbaru.")
+                            st.error("Data target tidak ditemukan pada file live GitHub terbaru.")
                     except Exception as err:
                         st.error(f"Error: {err}")
     else:
