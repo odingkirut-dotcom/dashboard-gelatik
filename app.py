@@ -37,6 +37,9 @@ except Exception as e:
 
 df = st.session_state.df_data
 
+# Otomatis deteksi kolom nama utama
+nama_col = next((col for col in df.columns if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower()), df.columns[1])
+
 # Tombol muat ulang data terbaru
 if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     st.cache_data.clear()
@@ -44,13 +47,13 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
         del st.session_state['df_data']
     st.rerun()
 
-# --- PENCARIAN TINGKAT LANJUT & AMAN ---
+# --- PENCARIAN PRESISI & AMAN ---
 st.subheader("🔎 Cari Karyawan (Pencarian Teks / Pilih Langsung)")
 
 col_s1, col_s2 = st.columns(2)
 
 with col_s1:
-    search_query = st.text_input("Ketik Nama / ID (Contoh: RUKOYAH):")
+    search_query = st.text_input("Ketik Nama / ID (Contoh: RIKA SITI):")
 
 with col_s2:
     text_cols = [c for c in df.columns if df[c].dtype == 'object']
@@ -64,7 +67,10 @@ hasil_cari = pd.DataFrame()
 idx_row = None
 
 if search_query:
+    # Memecah kata kunci (misal: "rika" dan "siti")
     keywords = search_query.strip().split()
+    
+    # Filter ketat: baris harus mengandung KEDUA kata tersebut di dalam satu baris yang sama
     mask = pd.Series(True, index=df.index)
     df_str = df.astype(str)
     for kw in keywords:
@@ -80,8 +86,9 @@ if not hasil_cari.empty:
         idx_row = hasil_cari.index[0]
         person = df.loc[idx_row]
         perusahaan_val = person.get('NAMA PERUSAHAAN', 'Tidak diketahui')
+        nama_val = person.get(nama_col, 'Karyawan')
 
-        st.success(f"✅ Data ditemukan! (Perusahaan: **{perusahaan_val}** | Baris Index: {idx_row})")
+        st.success(f"✅ Ditemukan: **{nama_val}** (Perusahaan: **{perusahaan_val}** | Baris Index: {idx_row})")
 
         # Formulir Edit dengan Tampilan Tab Modern & Kompak
         with st.form("form_edit_karyawan_modern"):
@@ -152,11 +159,11 @@ if not hasil_cari.empty:
                     except Exception as e:
                         st.error(f"Gagal menyimpan ke GitHub: {e}")
     else:
-        st.info(f"Ditemukan **{len(hasil_cari)} data** yang mirip:")
+        st.info(f"Ditemukan **{len(hasil_cari)} data** yang cocok:")
         st.dataframe(hasil_cari, use_container_width=True)
 else:
     if search_query:
-        st.warning("Data tidak ditemukan dari pencarian teks. Coba pilih namanya langsung lewat kotak **Dropdown** di sebelah kanan.")
+        st.warning("Data tidak ditemukan. Coba ketik nama yang lebih spesifik atau pilih langsung dari dropdown di sebelah kanan.")
     else:
         st.info("💡 Ketik kata kunci pada kotak pencarian atau pilih nama langsung dari dropdown di sebelah kanan.")
         with st.expander("Lihat Seluruh Tabel Database Nasional"):
