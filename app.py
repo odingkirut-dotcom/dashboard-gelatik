@@ -13,8 +13,6 @@ st.set_page_config(
     layout="wide"
 )
 
-st.cache_data.clear()
-
 st.title("🦅 Dashboard Data - Database Nasional")
 st.markdown("Kelola dan edit data personil dengan cepat. Perubahan tersimpan **permanen ke GitHub**.")
 
@@ -30,7 +28,6 @@ def load_data_from_github():
     resp = requests.get(raw_url)
     
     if resp.status_code != 200:
-        # Coba fallback tanpa spasi/enkode khusus jika gagal
         raw_url_fallback = f"https://raw.githubusercontent.com/{REPO_NAME}/main/Summary%20Database%20Nasional%2013%20November%202026.csv?t={time.time()}"
         resp = requests.get(raw_url_fallback)
         
@@ -41,7 +38,7 @@ def load_data_from_github():
         df = df.fillna("")
         return df
     else:
-        raise Exception(f"Gagal mengunduh file dari GitHub (Status Code: {resp.status_code}). Periksa kembali nama file CSV di repository Anda.")
+        raise Exception(f"Gagal mengunduh file dari GitHub (Status Code: {resp.status_code})")
 
 try:
     with st.spinner("Mengambil database nasional terbaru dari GitHub..."):
@@ -116,10 +113,6 @@ if not hasil_cari.empty:
 else:
     if search_query:
         st.warning(f"Data '{search_query}' tidak ditemukan di dalam file CSV GitHub.")
-        with st.expander("🔍 Debug Info: Lihat 5 Baris Pertama Data yang Terbaca di Aplikasi"):
-            st.write(f"Total baris dalam CSV: {len(df_master)}")
-            st.write(f"Kolom yang terdeteksi: {cols_list}")
-            st.dataframe(df_master.head(5), use_container_width=True)
     if 'selected_id' in st.session_state:
         del st.session_state['selected_id']
 
@@ -195,7 +188,11 @@ if 'selected_id' in st.session_state:
                         df_live.columns = df_live.columns.astype(str).str.strip()
                         df_live = df_live.fillna("")
                         
-                        matched_live = df_live[df_live[id_col].astype(str) == active_id]
+                        # Deteksi kolom ID secara aman pada data live
+                        live_cols_list = list(df_live.columns)
+                        live_id_col = next((col for col in live_cols_list if 'id' in col.lower() or 'personil' in col.lower()), live_cols_list[0])
+                        
+                        matched_live = df_live[df_live[live_id_col].astype(str) == active_id]
                         
                         if not matched_live.empty:
                             live_idx = matched_live.index[0]
@@ -223,7 +220,7 @@ if 'selected_id' in st.session_state:
                             else:
                                 st.error(f"Gagal menyimpan ke GitHub API: {resp_put.text}")
                         else:
-                            st.error("Gagal mencocokkan ID personil pada data terbaru GitHub.")
+                            st.error(f"Gagal mencocokkan ID '{active_id}' pada data terbaru GitHub.")
                     except Exception as e:
                         st.error(f"Gagal menyimpan ke GitHub: {e}")
 else:
