@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-from github import Github
+import requests
+import base64
 import urllib.parse
 import time
 
@@ -125,18 +126,27 @@ if 'selected_id' in st.session_state:
             if submitted:
                 with st.spinner("Menyimpan perubahan langsung ke GitHub..."):
                     try:
-                        # 1. Hubungkan ke GitHub repository
-                        g = Github(st.secrets["GITHUB_TOKEN"])
-                        repo = g.get_repo(REPO_NAME)
+                        api_url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}"
+                        headers = {
+                            "Authorization": f"Bearer {st.secrets['GITHUB_TOKEN']}",
+                            "Accept": "application/vnd.github+json"
+                        }
                         
-                        # 2. Ambil SHA dan file terbaru langsung dari server GitHub
-                        file_content = repo.get_contents(FILE_PATH)
-                        current_sha = file_content.sha
+                        # 1. Ambil SHA dan konten terbaru langsung via GitHub REST API
+                        resp_get = requests.get(api_url, headers=headers)
+                        if resp_get.status_code != 200:
+                            st.error(f"Gagal mengambil metadata file dari GitHub: {resp_get.text}")
+                            st.stop()
+                            
+                        file_data = resp_get.json()
+                        current_sha = file_data["sha"]
                         
-                        file_decoded = file_content.decoded_content.decode("latin1")
+                        # Decode konten live dari GitHub
+                        file_content_b64 = file_data["content"]
+                        file_decoded = base64.b64decode(file_content_b64).decode("latin1")
                         df_live = pd.read_csv(pd.io.common.StringIO(file_decoded), encoding="latin1")
                         
-                        # 3. Cari baris berdasarkan ID personil pada data live GitHub
+                        # 2. Cari baris berdasarkan ID personil pada data live
                         matched_live = df_live[df_live[id_col].astype(str) == active_id]
                         
                         if not matched_live.empty:
@@ -155,22 +165,26 @@ if 'selected_id' in st.session_state:
                                     else:
                                         df_live.loc[live_idx, col_name] = val
 
-                            # 4. Konversi ke string CSV standar
+                            # 3. Konversi ke string CSV, lalu encode ke Base64 (standar GitHub API)
                             updated_csv_str = df_live.to_csv(index=False, encoding="latin1")
+                            updated_b64 = base64.b64encode(updated_csv_str.encode("latin1")).decode("utf-8")
                             
-                            # 5. Kirim update ke GitHub tanpa parameter encoding yang salah
-                            repo.update_file(
-                                path=FILE_PATH,
-                                message=f"Update data nasional ID {curr_id}",
-                                content=updated_csv_str,
-                                sha=current_sha
-                            )
+                            payload = {
+                                "message": f"Update data nasional ID {curr_id}",
+                                "content": updated_b64,
+                                "sha": current_sha
+                            }
                             
-                            st.session_state.form_version += 1
-                            st.success("✅ Perubahan berhasil disimpan permanen ke file CSV GitHub!")
-                            st.balloons()
-                            time.sleep(1)
-                            st.rerun()
+                            # 4. Kirim pembaruan menggunakan REST API PUT
+                            resp_put = requests.put(api_url, headers=headers, json=payload)
+                            if resp_put.status_code in [200, 201]:
+                                st.session_state.form_version += 1
+                                st.success("✅ Perubahan berhasil disimpan permanen ke file CSV GitHub!")
+                                st.balloons()
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error(f"Gagal menyimpan ke GitHub API: {resp_put.text}")
                         else:
                             st.error("Gagal mencocokkan ID personil pada data terbaru GitHub.")
                     except Exception as e:
