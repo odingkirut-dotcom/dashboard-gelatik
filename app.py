@@ -20,7 +20,7 @@ FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 encoded_path = urllib.parse.quote(FILE_PATH)
 RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}"
 
-# Memuat data terbaru langsung dari GitHub
+# Memuat data terbaru dari GitHub
 @st.cache_data(ttl=5)
 def load_data_from_github():
     df = pd.read_csv(RAW_URL, encoding="latin1")
@@ -41,17 +41,23 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     st.cache_data.clear()
     if 'df_data' in st.session_state:
         del st.session_state['df_data']
+    if 'selected_id' in st.session_state:
+        del st.session_state['selected_id']
     st.rerun()
 
 # --- PENCARIAN TEKS EKSKLUSIF (KOLOM NAMA & ID) ---
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
-search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RIKA SITI RUKOYAH):")
+search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RIKA SITI RUKOYAH):", key="input_search_query")
 
 # Otomatis deteksi kolom nama dan ID secara presisi
 nama_col = next((col for col in df.columns if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), df.columns[1])
 id_col = next((col for col in df.columns if 'id' in str(col).lower() or 'personil' in str(col).lower()), df.columns[0])
 
-# Menentukan baris yang dipilih berdasarkan input teks
+# Reset pilihan jika kotak pencarian dikosongkan atau diubah
+if not search_query:
+    if 'selected_id' in st.session_state:
+        del st.session_state['selected_id']
+
 hasil_cari = pd.DataFrame()
 
 if search_query:
@@ -65,18 +71,34 @@ if search_query:
         
     hasil_cari = df[mask]
 
-# Logika Tampilan Form Edit jika data ditemukan
+# Jika ditemukan tepat 1 data dari pencarian
 if not hasil_cari.empty:
     if len(hasil_cari) == 1:
         target_row_idx = hasil_cari.index[0]
         person = df.loc[target_row_idx]
+        curr_id = str(person.get(id_col, '-'))
+        
+        # Simpan ID yang aktif ke session state agar stabil saat diketik
+        st.session_state['selected_id'] = curr_id
+    else:
+        st.info(f"Ditemukan **{len(hasil_cari)} data** yang cocok:")
+        st.dataframe(hasil_cari, use_container_width=True)
+
+# Tampilkan Form Edit jika ada ID yang sedang aktif dipilih/ditemukan
+if 'selected_id' in st.session_state:
+    active_id = st.session_state['selected_id']
+    matched_active = df[df[id_col].astype(str) == active_id]
+    
+    if not matched_active.empty:
+        active_row_idx = matched_active.index[0]
+        person = df.loc[active_row_idx]
 
         curr_nama = str(person.get(nama_col, '-'))
         curr_id = str(person.get(id_col, '-'))
         curr_perusahaan = str(person.get('NAMA PERUSAHAAN', '-'))
 
-        # Formulir Edit dengan Tampilan 2 Kolom yang Nyaman & Lengkap
-        with st.form("form_edit_karyawan_lengkap"):
+        # Formulir Edit dengan Tampilan 2 Kolom yang Stabil
+        with st.form("form_edit_karyawan_stabil"):
             st.markdown(f"### ✏️ Edit Data: **{curr_nama}**")
             st.info(f"🆔 **ID Personil:** {curr_id}  |  🏢 **Perusahaan:** {curr_perusahaan}")
             st.caption("Ubah data apa saja pada kolom di bawah ini, lalu klik tombol Simpan.")
@@ -84,11 +106,10 @@ if not hasil_cari.empty:
             edited_values = {}
             col_names = list(df.columns)
             
-            # Menampilkan seluruh kolom dalam layout 2 kolom yang rapi
             c1, c2 = st.columns(2)
             for i, col in enumerate(col_names):
                 with (c1 if i % 2 == 0 else c2):
-                    unique_key = f"field_{i}_{col}"
+                    unique_key = f"field_{col}_{active_id}"
                     val_data = person.get(col, '')
                     val_str = '' if pd.isna(val_data) else str(val_data)
                     edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
@@ -99,13 +120,12 @@ if not hasil_cari.empty:
             if submitted:
                 with st.spinner("Menyimpan perubahan langsung ke GitHub..."):
                     try:
-                        # Ambil DataFrame paling fresh langsung dari GitHub untuk menghindari konflik
+                        # Ambil DataFrame paling fresh langsung dari GitHub
                         df_live = load_data_from_github()
                         
-                        # Cari baris yang sama persis berdasarkan ID Personil agar akurat
-                        matched = df_live[df_live[id_col].astype(str) == curr_id]
-                        if not matched.empty:
-                            live_idx = matched.index[0]
+                        matched_live = df_live[df_live[id_col].astype(str) == active_id]
+                        if not matched_live.empty:
+                            live_idx = matched_live.index[0]
                             
                             for col_name, val in edited_values.items():
                                 if df_live[col_name].dtype in ['float64', 'int64']:
@@ -132,10 +152,12 @@ if not hasil_cari.empty:
                                 sha=file_content.sha
                             )
                             
-                            # Bersihkan cache agar data langsung segar
+                            # Bersihkan cache dan session
                             st.cache_data.clear()
                             if 'df_data' in st.session_state:
                                 del st.session_state['df_data']
+                            if 'selected_id' in st.session_state:
+                                del st.session_state['selected_id']
                                 
                             st.success("✅ Perubahan berhasil disimpan permanen ke file CSV GitHub!")
                             st.balloons()
@@ -144,13 +166,8 @@ if not hasil_cari.empty:
                             st.error("Gagal mencocokkan ID personil pada data terbaru GitHub.")
                     except Exception as e:
                         st.error(f"Gagal menyimpan ke GitHub: {e}")
-    else:
-        st.info(f"Ditemukan **{len(hasil_cari)} data** yang cocok:")
-        st.dataframe(hasil_cari, use_container_width=True)
 else:
-    if search_query:
-        st.warning("Data tidak ditemukan dari pencarian nama/ID. Periksa kembali ejaan kata kunci.")
-    else:
+    if not search_query:
         st.info("💡 Ketik nama karyawan atau ID pada kotak pencarian di atas untuk mulai mencari.")
         with st.expander("Lihat Seluruh Tabel Database Nasional"):
             st.dataframe(df, use_container_width=True)
