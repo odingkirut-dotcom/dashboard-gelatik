@@ -101,4 +101,63 @@ if not hasil_cari.empty:
                 c1, c2 = st.columns(2)
                 for i, col in enumerate(col_names):
                     col_lower = col.lower()
-                    if
+                    if any(k in col_lower for k in ['nama', 'id', 'nik', 'ktp', 'project', 'posisi', 'area', 'sub', 'tl', 'perusahaan']):
+                        with (c1 if i % 2 == 0 else c2):
+                            edited_values[col] = st.text_input(str(col), value=str(person.get(col, '')))
+
+            with tab2:
+                st.markdown("##### Informasi Alamat & Lokasi")
+                c1, c2 = st.columns(2)
+                for i, col in enumerate(col_names):
+                    col_lower = col.lower()
+                    if any(k in col_lower for k in ['alamat', 'rt', 'rw', 'kelurahan', 'kecamatan', 'kotamadya', 'propinsi', 'pos', 'domisili']):
+                        with (c1 if i % 2 == 0 else c2):
+                            edited_values[col] = st.text_input(str(col), value=str(person.get(col, '')))
+
+            with tab3:
+                st.markdown("##### Informasi Pribadi & Kontak Lainnya")
+                c1, c2 = st.columns(2)
+                assigned_cols = list(edited_values.keys())
+                remaining_cols = [c for c in col_names if c not in assigned_cols]
+                
+                for i, col in enumerate(remaining_cols):
+                    with (c1 if i % 2 == 0 else c2):
+                        edited_values[col] = st.text_input(str(col), value=str(person.get(col, '')))
+
+            st.markdown("---")
+            submitted = st.form_submit_button("💾 Simpan Perubahan Secara Permanen ke GitHub", use_container_width=True)
+            
+            if submitted:
+                with st.spinner("Menyimpan perubahan langsung ke file CSV di GitHub..."):
+                    try:
+                        for col_name, val in edited_values.items():
+                            st.session_state.df_data.loc[idx_row, col_name] = val
+
+                        g = Github(st.secrets["GITHUB_TOKEN"])
+                        repo = g.get_repo(REPO_NAME)
+                        file_content = repo.get_contents(FILE_PATH)
+                        
+                        updated_csv_bytes = st.session_state.df_data.to_csv(index=False, encoding="latin1").encode("latin1")
+                        repo.update_file(
+                            path=FILE_PATH,
+                            message=f"Update data nasional baris {idx_row}",
+                            content=updated_csv_bytes,
+                            sha=file_content.sha
+                        )
+                        
+                        st.cache_data.clear()
+                        del st.session_state['df_data']
+                        st.success("✅ Perubahan berhasil disimpan permanen ke file CSV GitHub!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Gagal menyimpan ke GitHub: {e}")
+    else:
+        st.info(f"Ditemukan **{len(hasil_cari)} data** yang mirip:")
+        st.dataframe(hasil_cari, use_container_width=True)
+else:
+    if search_query:
+        st.warning("Data tidak ditemukan dari pencarian teks. Coba pilih namanya langsung lewat kotak **Dropdown** di sebelah kanan.")
+    else:
+        st.info("💡 Ketik kata kunci pada kotak pencarian atau pilih nama langsung dari dropdown di sebelah kanan.")
+        with st.expander("Lihat Seluruh Tabel Database Nasional"):
+            st.dataframe(df, use_container_width=True)
