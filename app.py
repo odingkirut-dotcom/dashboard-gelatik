@@ -118,7 +118,6 @@ else:
 if 'selected_row_idx' in st.session_state:
     target_idx = st.session_state['selected_row_idx']
     
-    # Ambil data dari master berdasarkan indeks
     if target_idx < len(df_master):
         person = df_master.loc[target_idx]
 
@@ -179,32 +178,34 @@ if 'selected_row_idx' in st.session_state:
                         df_live.columns = df_live.columns.astype(str).str.strip()
                         df_live = df_live.fillna("")
                         
-                        # Simpan langsung ke indeks baris yang sama persis pada data live GitHub
-                        if target_idx < len(df_live):
-                            for col_name, val in edited_values.items():
-                                if col_name in df_live.columns:
-                                    df_live.loc[target_idx, col_name] = val
+                        # Pastikan indeks aman: jika indeks live kurang, tambahkan baris kosong otomatis
+                        while target_idx >= len(df_live):
+                            new_row = {col: "" for col in df_live.columns}
+                            df_live = pd.concat([df_live, pd.DataFrame([new_row])], ignore_index=True)
+                        
+                        # Update langsung nilai pada baris tersebut
+                        for col_name, val in edited_values.items():
+                            if col_name in df_live.columns:
+                                df_live.loc[target_idx, col_name] = val
 
-                            updated_csv_str = df_live.to_csv(index=False, encoding="latin1")
-                            updated_b64 = base64.b64encode(updated_csv_str.encode("latin1")).decode("utf-8")
-                            
-                            payload = {
-                                "message": f"Update data nasional baris {target_idx}",
-                                "content": updated_b64,
-                                "sha": current_sha
-                            }
-                            
-                            resp_put = requests.put(api_url, headers=headers, json=payload)
-                            if resp_put.status_code in [200, 201]:
-                                st.session_state.form_version += 1
-                                st.success("✅ Perubahan berhasil disimpan permanen ke file CSV GitHub!")
-                                st.balloons()
-                                time.sleep(1)
-                                st.rerun()
-                            else:
-                                st.error(f"Gagal menyimpan ke GitHub API: {resp_put.text}")
+                        updated_csv_str = df_live.to_csv(index=False, encoding="latin1")
+                        updated_b64 = base64.b64encode(updated_csv_str.encode("latin1")).decode("utf-8")
+                        
+                        payload = {
+                            "message": f"Update data nasional baris {target_idx}",
+                            "content": updated_b64,
+                            "sha": current_sha
+                        }
+                        
+                        resp_put = requests.put(api_url, headers=headers, json=payload)
+                        if resp_put.status_code in [200, 201]:
+                            st.session_state.form_version += 1
+                            st.success("✅ Perubahan berhasil disimpan permanen ke file CSV GitHub!")
+                            st.balloons()
+                            time.sleep(1)
+                            st.rerun()
                         else:
-                            st.error("Indeks baris pada file GitHub berbeda. Silakan muat ulang data.")
+                            st.error(f"Gagal menyimpan ke GitHub API: {resp_put.text}")
                     except Exception as e:
                         st.error(f"Gagal menyimpan ke GitHub: {e}")
     else:
