@@ -17,10 +17,11 @@ st.markdown("Kelola dan edit data personil dengan cepat. Perubahan tersimpan **p
 REPO_NAME = "odingkirut-dotcom/dashboard-gelatik"
 FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
-# Fungsi untuk memuat data dengan aman
+# Fungsi untuk memuat data dengan anti-cache total
 def load_data():
-    url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/Summary%20Database%20Nasional%2013%20November%202026.csv?t={time.time()}"
-    resp = requests.get(url)
+    # Menggunakan timestamp acak agar server GitHub dan browser tidak mengambil data lama
+    url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/Summary%20Database%20Nasional%2013%20November%202026.csv?t={time.time_ns()}"
+    resp = requests.get(url, headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
     if resp.status_code == 200:
         content = resp.content.decode("latin1")
         if "404: Not Found" in content[:50]:
@@ -60,13 +61,11 @@ if not search_query and 'selected_person_id' in st.session_state:
 if search_query:
     q = search_query.strip().lower()
     
-    # Pencarian spesifik: Hanya mencari pada kolom ID atau kolom NAMA
     match_idx = []
     for idx, row in df_master.iterrows():
         val_id = str(row.get(id_col, "")).lower()
         val_nama = str(row.get(nama_col, "")).lower()
         
-        # Jika query yang diketik cocok dengan ID atau Nama secara spesifik
         if q in val_id or q in val_nama:
             match_idx.append(idx)
             
@@ -94,7 +93,6 @@ if search_query:
 if 'selected_person_id' in st.session_state:
     target_id = st.session_state['selected_person_id']
     
-    # Cari baris berdasarkan ID unik
     matched_master = df_master[df_master[id_col].astype(str).str.strip() == target_id]
         
     if not matched_master.empty:
@@ -116,7 +114,7 @@ if 'selected_person_id' in st.session_state:
             submitted = st.form_submit_button("💾 Simpan Perubahan Secara Permanen ke GitHub", use_container_width=True)
             
             if submitted:
-                with st.spinner("Menyimpan ke GitHub..."):
+                with st.spinner("Menyimpan ke GitHub secara langsung..."):
                     try:
                         api_url = f"https://api.github.com/repos/{REPO_NAME}/contents/Summary%20Database%20Nasional%2013%20November%202026.csv"
                         headers = {
@@ -124,24 +122,28 @@ if 'selected_person_id' in st.session_state:
                             "Accept": "application/vnd.github+json"
                         }
                         
+                        # --- AMBIL SHA DAN DATA LIVE PALING BARU TEPAT SAAT TOMBOL DIKLIK ---
                         r_get = requests.get(api_url, headers=headers)
                         if r_get.status_code != 200:
-                            st.error(f"Gagal mengambil file dari API GitHub (Status: {r_get.status_code})")
+                            st.error(f"Gagal mengambil metadata file dari GitHub (Status: {r_get.status_code})")
                             st.stop()
                             
                         j_data = r_get.json()
                         sha = j_data['sha']
                         
-                        r_dl = requests.get(f"{j_data['download_url']}?t={time.time()}")
+                        # Ambil konten CSV paling fresh langsung dari API content download_url
+                        r_dl = requests.get(f"{j_data['download_url']}?t={time.time_ns()}")
                         df_live = pd.read_csv(io.StringIO(r_dl.content.decode("latin1")), encoding="latin1", dtype=str)
                         df_live.columns = df_live.columns.astype(str).str.strip()
                         df_live = df_live.fillna("")
                         
+                        # Cari baris berdasarkan ID Unik pada data live
                         live_match = df_live[df_live[id_col].astype(str).str.strip() == target_id]
                             
                         if not live_match.empty:
                             live_idx = live_match.index[0]
                             
+                            # Timpa nilainya dengan data baru dari form
                             for k, v in edited_vals.items():
                                 if k in df_live.columns:
                                     df_live.loc[live_idx, k] = v
@@ -150,8 +152,8 @@ if 'selected_person_id' in st.session_state:
                             b64_content = base64.b64encode(csv_str.encode("latin1")).decode("utf-8")
                             
                             payload = {
-                                "message": f"Update data ID {target_id} via Dashboard",
-                                "content": b64_content,
+                                "message": f"Update data ID {target_id} via Dashboard - {time.strftime('%H:%M:%S')}",
+                            "content": b64_content,
                                 "sha": sha
                             }
                             
