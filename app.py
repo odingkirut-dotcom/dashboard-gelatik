@@ -6,12 +6,12 @@ import urllib.parse
 
 # Konfigurasi Halaman Web
 st.set_page_config(
-    page_title="Dashboard & Editor Database Nasional",
+    page_title="Dashboard Database Nasional",
     page_icon="🦅",
     layout="wide"
 )
 
-st.title("🦅 Dashboard & Editor Data - Database Nasional")
+st.title("🦅 Dashboard Data - Database Nasional")
 st.markdown("Kelola, cari, dan edit data personil dengan tampilan terorganisir. Perubahan tersimpan **permanen ke GitHub**.")
 
 # --- PENGATURAN GITHUB ---
@@ -100,7 +100,6 @@ if not hasil_cari.empty:
                     col_lower = str(col).lower()
                     if any(k in col_lower for k in ['nama', 'id', 'nik', 'ktp', 'project', 'posisi', 'area', 'sub', 'tl', 'perusahaan']):
                         with (c1 if i % 2 == 0 else c2):
-                            # Mengatasi duplicate ID dengan key unik
                             unique_key = f"t1_{i}_{col}"
                             edited_values[col] = st.text_input(str(col), value=str(person.get(col, '')), key=unique_key)
 
