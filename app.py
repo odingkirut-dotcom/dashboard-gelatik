@@ -22,11 +22,26 @@ FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
 encoded_path = urllib.parse.quote(FILE_PATH)
 
-# Memuat data terbaru dari GitHub dengan anti-cache timestamp
+# Memuat data terbaru langsung dari REST API GitHub (bypass raw cache)
 def load_data_from_github():
-    raw_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}?t={time.time()}"
-    df = pd.read_csv(raw_url, encoding="latin1")
-    return df
+    api_url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}?t={time.time()}"
+    headers = {
+        "Authorization": f"Bearer {st.secrets['GITHUB_TOKEN']}",
+        "Accept": "application/vnd.github+json",
+        "Cache-Control": "no-cache"
+    }
+    resp = requests.get(api_url, headers=headers)
+    if resp.status_code == 200:
+        file_data = resp.json()
+        download_url = file_data.get("download_url")
+        # Tambahkan parameter acak agar tidak tersangkut cache CDN
+        resp_dl = requests.get(f"{download_url}&t={time.time()}")
+        file_decoded = resp_dl.content.decode("latin1")
+        return pd.read_csv(io.StringIO(file_decoded), encoding="latin1")
+    else:
+        # Fallback ke raw URL jika API rate limit
+        raw_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}?t={time.time()}"
+        return pd.read_csv(raw_url, encoding="latin1")
 
 try:
     with st.spinner("Mengambil database nasional terbaru dari GitHub..."):
@@ -133,7 +148,7 @@ if 'selected_id' in st.session_state:
                             "Accept": "application/vnd.github+json"
                         }
                         
-                        # 1. Ambil metadata file (SHA & download_url) via GitHub REST API
+                        # 1. Ambil SHA dan konten terbaru langsung via GitHub REST API
                         resp_get = requests.get(api_url, headers=headers)
                         if resp_get.status_code != 200:
                             st.error(f"Gagal mengambil metadata file dari GitHub: {resp_get.text}")
@@ -142,10 +157,9 @@ if 'selected_id' in st.session_state:
                         file_data = resp_get.json()
                         current_sha = file_data["sha"]
                         
-                        # 2. Unduh isi file CSV secara langsung melalui download_url (aman untuk file besar > 1MB)
                         download_url = file_data.get("download_url")
                         if download_url:
-                            resp_dl = requests.get(download_url)
+                            resp_dl = requests.get(f"{download_url}&t={time.time()}")
                             file_decoded = resp_dl.content.decode("latin1")
                         else:
                             file_content_b64 = file_data["content"]
@@ -157,7 +171,7 @@ if 'selected_id' in st.session_state:
                             
                         df_live = pd.read_csv(io.StringIO(file_decoded), encoding="latin1")
                         
-                        # 3. Cari baris berdasarkan ID personil pada data live
+                        # 2. Cari baris berdasarkan ID personil pada data live
                         matched_live = df_live[df_live[id_col].astype(str) == active_id]
                         
                         if not matched_live.empty:
@@ -176,7 +190,7 @@ if 'selected_id' in st.session_state:
                                     else:
                                         df_live.loc[live_idx, col_name] = val
 
-                            # 4. Konversi ke string CSV, lalu encode ke Base64 untuk dikirim via API PUT
+                            # 3. Konversi ke string CSV, lalu encode ke Base64
                             updated_csv_str = df_live.to_csv(index=False, encoding="latin1")
                             updated_b64 = base64.b64encode(updated_csv_str.encode("latin1")).decode("utf-8")
                             
@@ -186,7 +200,7 @@ if 'selected_id' in st.session_state:
                                 "sha": current_sha
                             }
                             
-                            # 5. Kirim pembaruan menggunakan REST API PUT
+                            # 4. Kirim pembaruan menggunakan REST API PUT
                             resp_put = requests.put(api_url, headers=headers, json=payload)
                             if resp_put.status_code in [200, 201]:
                                 st.session_state.form_version += 1
