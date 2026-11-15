@@ -158,13 +158,12 @@ if 'selected_id' in st.session_state:
                             # 4. Konversi ke string CSV standar
                             updated_csv_str = df_live.to_csv(index=False, encoding="latin1")
                             
-                            # 5. Kirim update dengan menentukan encoding secara eksplisit ("utf-8")
+                            # 5. Kirim update ke GitHub tanpa parameter encoding yang salah
                             repo.update_file(
                                 path=FILE_PATH,
                                 message=f"Update data nasional ID {curr_id}",
                                 content=updated_csv_str,
-                                sha=current_sha,
-                                encoding="utf-8"
+                                sha=current_sha
                             )
                             
                             st.session_state.form_version += 1
