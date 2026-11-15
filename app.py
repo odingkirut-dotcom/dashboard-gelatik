@@ -19,36 +19,25 @@ FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 encoded_path = urllib.parse.quote(FILE_PATH)
 RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}"
 
+# Memuat seluruh database mentah tanpa filter perusahaan agar data pasti ada
 @st.cache_data(ttl=10)
 def load_data_from_github():
     df = pd.read_csv(RAW_URL, encoding="latin1")
-    
-    # Filter fleksibel untuk PT. Gelatik Supra
-    if 'NAMA PERUSAHAAN' in df.columns:
-        df['NAMA PERUSAHAAN_clean'] = df['NAMA PERUSAHAAN'].astype(str).str.upper().str.replace(".", "").str.strip()
-        df_gelatik = df[df['NAMA PERUSAHAAN_clean'].str.contains("GELATIK SUPRA", na=False)].copy()
-    else:
-        df_gelatik = df.copy()
-        
-    df_gelatik = df_gelatik.dropna(subset=['Nama'])
-    if 'NoKTP' in df_gelatik.columns:
-        df_gelatik['NoKTP'] = df_gelatik['NoKTP'].apply(lambda x: f"{int(x)}" if pd.notnull(x) and isinstance(x, (int, float)) else str(x))
-    if 'Handphone' in df_gelatik.columns:
-        df_gelatik['Handphone'] = df_gelatik['Handphone'].astype(str)
-        
-    return df_gelatik
+    df = df.dropna(subset=['Nama'])
+    if 'NoKTP' in df.columns:
+        df['NoKTP'] = df['NoKTP'].apply(lambda x: f"{int(x)}" if pd.notnull(x) and isinstance(x, (int, float)) else str(x))
+    if 'Handphone' in df.columns:
+        df['Handphone'] = df['Handphone'].astype(str)
+    return df
 
-def save_data_to_github(df_updated_gelatik, commit_message):
+def save_data_to_github(df_updated, commit_message):
     g = Github(st.secrets["GITHUB_TOKEN"])
     repo = g.get_repo(REPO_NAME)
     
     file_content = repo.get_contents(FILE_PATH)
     df_full = pd.read_csv(io.BytesIO(file_content.decoded_content), encoding="latin1")
     
-    if 'NAMA PERUSAHAAN_clean' in df_updated_gelatik.columns:
-        df_updated_gelatik = df_updated_gelatik.drop(columns=['NAMA PERUSAHAAN_clean'])
-        
-    df_full.update(df_updated_gelatik)
+    df_full.update(df_updated)
     updated_csv_bytes = df_full.to_csv(index=False, encoding="latin1").encode("latin1")
     
     repo.update_file(
@@ -75,10 +64,9 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     st.rerun()
 
 st.subheader("🔎 Cari Karyawan untuk Dilihat / Diedit")
-search_query = st.text_input("Ketik Kata Kunci Nama (Contoh: Ruko atau Rika):")
+search_query = st.text_input("Ketik Kata Kunci Nama (Contoh: Rika atau Rukoyah):")
 
 if search_query:
-    # Pencarian super fleksibel: mengabaikan huruf besar/kecil & spasi berlebih
     query_clean = search_query.strip()
     mask = (
         df['Nama'].astype(str).str.contains(query_clean, case=False, na=False) |
@@ -87,17 +75,13 @@ if search_query:
     hasil_cari = df[mask]
 
     if len(hasil_cari) == 0:
-        st.warning("Data tidak ditemukan. Coba gunakan kata kunci yang lebih pendek (misal: 'Rukoyah' atau 'Rika').")
-        
-        # Opsi bantuan: tampilkan beberapa nama teratas agar tahu formatnya
-        with st.expander("Lihat contoh beberapa nama karyawan di database"):
-            st.dataframe(df[['ID Personil', 'Nama']].head(10), use_container_width=True)
-            
+        st.warning("Data tidak ditemukan di database.")
     elif len(hasil_cari) == 1:
+        # Tepat 1 data ditemukan -> Munculkan form edit lengkap
         idx_row = hasil_cari.index[0]
         person = df.loc[idx_row]
 
-        st.success(f"Ditemukan tepat satu data untuk: **{person['Nama']}** (ID: {person['ID Personil']})")
+        st.success(f"Ditemukan tepat satu data untuk: **{person['Nama']}** (ID: {person.get('ID Personil', '-')}) - Perusahaan: **{person.get('NAMA PERUSAHAAN', '-')}**")
 
         with st.form("form_edit_karyawan"):
             st.markdown("### ✏️ Form Edit Informasi Karyawan")
@@ -143,12 +127,11 @@ if search_query:
                     except Exception as e:
                         st.error(f"Gagal menyimpan ke GitHub: {e}")
     else:
-        st.info(f"Ditemukan **{len(hasil_cari)} data** yang mirip. Silakan pilih dari tabel ringkasan di bawah:")
-        st.dataframe(
-            hasil_cari[['ID Personil', 'Nama', 'Nama Project', 'Area CBS', 'Handphone']], 
-            use_container_width=True
-        )
+        # Banyak data ditemukan -> Hanya tampilkan tabel ringkasan saja sesuai permintaan
+        st.info(f"Ditemukan **{len(hasil_cari)} data** yang mirip. Silakan ketik nama lebih spesifik:")
+        cols_to_show = [c for c in ['ID Personil', 'Nama', 'NAMA PERUSAHAAN', 'Nama Project', 'Area CBS', 'Handphone'] if c in df.columns]
+        st.dataframe(hasil_cari[cols_to_show], use_container_width=True)
 else:
-    st.info("💡 Ketik nama karyawan pada kotak pencarian di atas (misal: cukup ketik 'Rukoyah').")
-    with st.expander("Lihat Seluruh Tabel Data PT. Gelatik Supra"):
-        st.dataframe(df.drop(columns=['NAMA PERUSAHAAN_clean'], errors='ignore'), use_container_width=True)
+    st.info("💡 Ketik nama karyawan pada kotak pencarian di atas untuk mulai melihat dan mengedit informasinya.")
+    with st.expander("Lihat Seluruh Tabel Database"):
+        st.dataframe(df, use_container_width=True)
