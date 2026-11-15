@@ -37,37 +37,33 @@ except Exception as e:
 
 df = st.session_state.df_data
 
-# Otomatis temukan kolom yang berisi nama karyawan
-nama_col = next((col for col in df.columns if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower()), df.columns[1])
-
 # Tombol muat ulang data terbaru
 if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     st.cache_data.clear()
-    if 'df_data' not in st.session_state:
+    if 'df_data' in st.session_state:
         del st.session_state['df_data']
     st.rerun()
 
-# --- PENCARIAN DI KOLOM NAMA & ID ---
-st.subheader("🔎 Cari Karyawan Berdasarkan Nama")
-search_query = st.text_input("Ketik Nama Lengkap atau Bagian Nama (Contoh: RIKA SITI RUKOYAH):")
+# --- PENCARIAN SUPER FLEKSIBEL DI SELURUH KOLOM ---
+st.subheader("🔎 Cari Karyawan di Seluruh Database")
+search_query = st.text_input("Ketik Nama, Bagian Nama, atau ID (Contoh: RUKOYAH atau ID-JK0158):", value="RUKOYAH")
 
 if search_query:
     query_clean = search_query.strip()
     
-    # Pencarian langsung pada kolom nama atau ID personil
-    mask = (
-        df[nama_col].astype(str).str.contains(query_clean, case=False, na=False) |
-        df.astype(str).apply(lambda row: row.str.contains(query_clean, case=False, na=False)).any(axis=1)
-    )
+    # Mencari kata kunci di SEMUA kolom DataFrame secara sekaligus
+    mask = df.astype(str).apply(lambda row: row.str.contains(query_clean, case=False, na=False)).any(axis=1)
     hasil_cari = df[mask]
 
     if len(hasil_cari) == 0:
-        st.warning("Data tidak ditemukan. Periksa kembali ejaan nama.")
+        st.warning("Data tidak ditemukan di database nasional. Periksa kembali ejaan kata kunci.")
     
     elif len(hasil_cari) == 1:
         idx_row = hasil_cari.index[0]
         person = df.loc[idx_row]
 
+        # Ambil nama dari kolom pertama yang mengandung kata 'nama' atau kolom kedua
+        nama_col = next((col for col in df.columns if 'nama' in str(col).lower()), df.columns[1])
         nama_val = person.get(nama_col, 'Karyawan')
         perusahaan_val = person.get('NAMA PERUSAHAAN', 'Tidak diketahui')
 
@@ -140,9 +136,9 @@ if search_query:
                         st.error(f"Gagal menyimpan ke GitHub: {e}")
     
     else:
-        st.info(f"Ditemukan **{len(hasil_cari)} data** yang mirip. Silakan ketik nama lebih spesifik agar form edit muncul:")
+        st.info(f"Ditemukan **{len(hasil_cari)} data** yang mirip. Silakan ketik kata kunci lebih spesifik agar form edit muncul:")
         st.dataframe(hasil_cari, use_container_width=True)
 else:
-    st.info("💡 Ketik nama karyawan pada kotak pencarian di atas untuk mulai mencari.")
+    st.info("💡 Ketik kata kunci pada kotak pencarian di atas untuk mulai mencari.")
     with st.expander("Lihat Seluruh Tabel Database Nasional"):
         st.dataframe(df, use_container_width=True)
