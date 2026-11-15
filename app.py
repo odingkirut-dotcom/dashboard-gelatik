@@ -109,10 +109,11 @@ if 'selected_id' in st.session_state:
             st.caption("Ubah data apa saja pada kolom di bawah ini, lalu klik tombol Simpan.")
 
             edited_values = {}
-            col_names = list(df_fresh.columns)
+            # Hanya ambil kolom yang valid (abaikan kolom Unnamed kosong jika ada)
+            valid_cols = [c for c in df_fresh.columns if not str(c).startswith('Unnamed:')]
             
             c1, c2 = st.columns(2)
-            for i, col in enumerate(col_names):
+            for i, col in enumerate(valid_cols):
                 with (c1 if i % 2 == 0 else c2):
                     unique_key = f"fld_{active_id}_{col}_{st.session_state.form_version}"
                     val_data = person.get(col, '')
@@ -129,11 +130,10 @@ if 'selected_id' in st.session_state:
                         g = Github(st.secrets["GITHUB_TOKEN"])
                         repo = g.get_repo(REPO_NAME)
                         
-                        # 2. AMBIL SHA DAN ISI FILE TERBARU LANGSUNG DARI SERVER GITHUB (Mencegah Conflict/SHA Mismatch)
+                        # 2. Ambil SHA dan file terbaru langsung dari server GitHub
                         file_content = repo.get_contents(FILE_PATH)
                         current_sha = file_content.sha
                         
-                        # Decode isi file langsung dari GitHub
                         file_decoded = file_content.decoded_content.decode("latin1")
                         df_live = pd.read_csv(pd.io.common.StringIO(file_decoded), encoding="latin1")
                         
@@ -144,19 +144,21 @@ if 'selected_id' in st.session_state:
                             live_idx = matched_live.index[0]
                             
                             for col_name, val in edited_values.items():
-                                if df_live[col_name].dtype in ['float64', 'int64']:
-                                    if val.strip() == '':
-                                        df_live.loc[live_idx, col_name] = float('nan')
+                                if col_name in df_live.columns:
+                                    if df_live[col_name].dtype in ['float64', 'int64']:
+                                        if val.strip() == '':
+                                            df_live.loc[live_idx, col_name] = float('nan')
+                                        else:
+                                            try:
+                                                df_live.loc[live_idx, col_name] = float(val) if '.' in val else int(val)
+                                            except:
+                                                df_live.loc[live_idx, col_name] = val
                                     else:
-                                        try:
-                                            df_live.loc[live_idx, col_name] = float(val) if '.' in val else int(val)
-                                        except:
-                                            df_live.loc[live_idx, col_name] = val
-                                else:
-                                    df_live.loc[live_idx, col_name] = val
+                                        df_live.loc[live_idx, col_name] = val
 
-                            # 4. Kirim update ke GitHub menggunakan SHA terbaru yang baru saja diambil
+                            # 4. Konversi kembali ke CSV bytes dengan encoding latin1 yang aman
                             updated_csv_bytes = df_live.to_csv(index=False, encoding="latin1").encode("latin1")
+                            
                             repo.update_file(
                                 path=FILE_PATH,
                                 message=f"Update data nasional ID {curr_id}",
