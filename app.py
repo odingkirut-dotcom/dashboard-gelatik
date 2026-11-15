@@ -69,8 +69,10 @@ with col3:
 # --- TABEL DATA UTAMA ---
 st.markdown("### 📋 Tabel Data Personil PT. Gelatik Supra")
 search_name = st.text_input("Cari berdasarkan Nama Karyawan/Personil:")
+
 if search_name:
-    filtered_df = df[df['Nama'].str.contains(search_name, case=False, na=False)]
+    # Menggunakan case=False & strip() agar pencarian fleksibel terhadap huruf besar/kecil & spasi
+    filtered_df = df[df['Nama'].str.contains(search_name.strip(), case=False, na=False)]
 else:
     filtered_df = df
 
