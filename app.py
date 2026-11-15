@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from github import Github
 import urllib.parse
+import time
 
 # Konfigurasi Halaman Web
 st.set_page_config(
@@ -20,8 +21,7 @@ FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 encoded_path = urllib.parse.quote(FILE_PATH)
 RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}"
 
-# Memuat data terbaru dari GitHub
-@st.cache_data(ttl=5)
+# Memuat data terbaru dari GitHub tanpa cache yang mengunci
 def load_data_from_github():
     df = pd.read_csv(RAW_URL, encoding="latin1")
     return df
@@ -36,6 +36,10 @@ except Exception as e:
 
 df = st.session_state.df_data
 
+# Inisialisasi version counter untuk mereset widget form secara total
+if 'form_version' not in st.session_state:
+    st.session_state.form_version = 0
+
 # Tombol muat ulang data terbaru
 if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     st.cache_data.clear()
@@ -43,6 +47,7 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
         del st.session_state['df_data']
     if 'selected_id' in st.session_state:
         del st.session_state['selected_id']
+    st.session_state.form_version += 1
     st.rerun()
 
 # --- PENCARIAN TEKS EKSKLUSIF (KOLOM NAMA & ID) ---
@@ -53,7 +58,7 @@ search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: 
 nama_col = next((col for col in df.columns if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), df.columns[1])
 id_col = next((col for col in df.columns if 'id' in str(col).lower() or 'personil' in str(col).lower()), df.columns[0])
 
-# Reset pilihan jika kotak pencarian dikosongkan atau diubah
+# Reset pilihan jika kotak pencarian dikosongkan
 if not search_query:
     if 'selected_id' in st.session_state:
         del st.session_state['selected_id']
@@ -78,7 +83,6 @@ if not hasil_cari.empty:
         person = df.loc[target_row_idx]
         curr_id = str(person.get(id_col, '-'))
         
-        # Simpan ID yang aktif ke session state agar stabil saat diketik
         st.session_state['selected_id'] = curr_id
     else:
         st.info(f"Ditemukan **{len(hasil_cari)} data** yang cocok:")
@@ -87,29 +91,38 @@ if not hasil_cari.empty:
 # Tampilkan Form Edit jika ada ID yang sedang aktif dipilih/ditemukan
 if 'selected_id' in st.session_state:
     active_id = st.session_state['selected_id']
-    matched_active = df[df[id_col].astype(str) == active_id]
+    
+    # Ambil data paling fresh dari GitHub setiap kali form dirender
+    try:
+        df_fresh = load_data_from_github()
+    except:
+        df_fresh = df
+
+    matched_active = df_fresh[df_fresh[id_col].astype(str) == active_id]
     
     if not matched_active.empty:
         active_row_idx = matched_active.index[0]
-        person = df.loc[active_row_idx]
+        person = df_fresh.loc[active_row_idx]
 
         curr_nama = str(person.get(nama_col, '-'))
         curr_id = str(person.get(id_col, '-'))
         curr_perusahaan = str(person.get('NAMA PERUSAHAAN', '-'))
 
-        # Formulir Edit dengan Tampilan 2 Kolom yang Stabil
-        with st.form("form_edit_karyawan_stabil"):
+        # Formulir Edit dengan Key Dinamis berbasis Version & Timestamp agar selalu segar
+        form_key = f"form_edit_{active_id}_{st.session_state.form_version}"
+        with st.form(form_key):
             st.markdown(f"### ✏️ Edit Data: **{curr_nama}**")
             st.info(f"🆔 **ID Personil:** {curr_id}  |  🏢 **Perusahaan:** {curr_perusahaan}")
             st.caption("Ubah data apa saja pada kolom di bawah ini, lalu klik tombol Simpan.")
 
             edited_values = {}
-            col_names = list(df.columns)
+            col_names = list(df_fresh.columns)
             
             c1, c2 = st.columns(2)
             for i, col in enumerate(col_names):
                 with (c1 if i % 2 == 0 else c2):
-                    unique_key = f"field_{col}_{active_id}"
+                    # Key unik yang menjamin nilai widget tidak tersangkut di cache lama
+                    unique_key = f"fld_{active_id}_{col}_{st.session_state.form_version}"
                     val_data = person.get(col, '')
                     val_str = '' if pd.isna(val_data) else str(val_data)
                     edited_values[col] = st.text_input(str(col), value=val_str, key=unique_key)
@@ -120,10 +133,9 @@ if 'selected_id' in st.session_state:
             if submitted:
                 with st.spinner("Menyimpan perubahan langsung ke GitHub..."):
                     try:
-                        # Ambil DataFrame paling fresh langsung dari GitHub
                         df_live = load_data_from_github()
-                        
                         matched_live = df_live[df_live[id_col].astype(str) == active_id]
+                        
                         if not matched_live.empty:
                             live_idx = matched_live.index[0]
                             
@@ -152,15 +164,15 @@ if 'selected_id' in st.session_state:
                                 sha=file_content.sha
                             )
                             
-                            # Bersihkan cache dan session
+                            # Naikkan versi form dan bersihkan cache agar siklus berikutnya bersih total
                             st.cache_data.clear()
                             if 'df_data' in st.session_state:
                                 del st.session_state['df_data']
-                            if 'selected_id' in st.session_state:
-                                del st.session_state['selected_id']
+                            st.session_state.form_version += 1
                                 
                             st.success("✅ Perubahan berhasil disimpan permanen ke file CSV GitHub!")
                             st.balloons()
+                            time.sleep(1)
                             st.rerun()
                         else:
                             st.error("Gagal mencocokkan ID personil pada data terbaru GitHub.")
