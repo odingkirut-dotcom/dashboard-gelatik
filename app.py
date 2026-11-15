@@ -56,7 +56,7 @@ if 'Jenis Kelamin' in df.columns:
 
 # --- METRIK UTAMA (KPI) ---
 st.markdown("---")
-col1, col2, col3 = st.columns(3)
+col1, col2, col3 = st.columns3(3) if hasattr(st, 'columns3') else st.columns(3)
 with col1:
     st.metric("Total Personil", len(df))
 with col2:
@@ -70,11 +70,12 @@ with col3:
 st.markdown("### 📋 Tabel Data Personil PT. Gelatik Supra")
 search_name = st.text_input("Cari berdasarkan Nama Karyawan/Personil:")
 
+filtered_df = df.copy()
 if search_name:
-    # Menggunakan case=False & strip() agar pencarian fleksibel terhadap huruf besar/kecil & spasi
-    filtered_df = df[df['Nama'].str.contains(search_name.strip(), case=False, na=False)]
-else:
-    filtered_df = df
+    # Memecah kata pencarian agar mendukung pencarian multi-kata (misal: "Rika" atau "Siti")
+    keywords = search_name.strip().split()
+    for kw in keywords:
+        filtered_df = filtered_df[filtered_df['Nama'].str.contains(kw, case=False, na=False)]
 
 st.dataframe(filtered_df, use_container_width=True)
 
