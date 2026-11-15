@@ -22,7 +22,7 @@ FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
 encoded_path = urllib.parse.quote(FILE_PATH)
 
-# Memuat data terbaru dan membersihkan spasi nama kolom secara otomatis
+# Memuat data terbaru dengan memaksa seluruh kolom terbaca sebagai string (dtype=str)
 def load_data_from_github():
     api_url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}?t={time.time()}"
     headers = {
@@ -41,9 +41,11 @@ def load_data_from_github():
         resp_dl = requests.get(raw_url)
         file_decoded = resp_dl.content.decode("latin1")
         
-    df = pd.read_csv(io.StringIO(file_decoded), encoding="latin1")
-    # Bersihkan spasi berlebih pada semua nama kolom
+    # dtype=str mencegah ID berubah jadi angka/float (.0)
+    df = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
     df.columns = df.columns.astype(str).str.strip()
+    # Ganti NaN menjadi string kosong agar pencarian tidak error
+    df = df.fillna("")
     return df
 
 try:
@@ -70,9 +72,9 @@ cols_list = list(df_master.columns)
 id_col = next((col for col in cols_list if 'id' in str(col).lower() or 'personil' in str(col).lower()), cols_list[0])
 nama_col = next((col for col in cols_list if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), cols_list[1] if len(cols_list) > 1 else cols_list[0])
 
-# --- PENCARIAN ROBUST & ANTI-GAGAL ---
+# --- PENCARIAN UNIVERSAL KUAT & ANTI-MELESET ---
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
-search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RIKA SITI RUKOYAH):", key="input_search_query")
+search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: ID-JT000303):", key="input_search_query")
 
 # Reset pilihan jika kotak pencarian dikosongkan
 if not search_query:
@@ -82,13 +84,13 @@ if not search_query:
 hasil_cari = pd.DataFrame()
 
 if search_query:
-    keywords = search_query.strip().lower().split()
+    query_clean = search_query.strip().lower()
     
-    # Pencarian lintas seluruh kolom dengan mengubah baris menjadi string utuh
     match_indices = []
     for idx, row in df_master.iterrows():
-        row_str = " ".join(row.astype(str).values).lower()
-        if all(kw in row_str for kw in keywords):
+        # Gabungkan seluruh teks dalam baris menjadi satu string panjang
+        row_str = " ".join(row.values).lower()
+        if query_clean in row_str:
             match_indices.append(idx)
             
     hasil_cari = df_master.loc[match_indices]
@@ -193,8 +195,9 @@ if 'selected_id' in st.session_state:
                             st.error("File CSV di GitHub terbaca kosong.")
                             st.stop()
                             
-                        df_live = pd.read_csv(io.StringIO(file_decoded), encoding="latin1")
+                        df_live = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
                         df_live.columns = df_live.columns.astype(str).str.strip()
+                        df_live = df_live.fillna("")
                         
                         matched_live = df_live[df_live[id_col].astype(str) == active_id]
                         
@@ -203,16 +206,7 @@ if 'selected_id' in st.session_state:
                             
                             for col_name, val in edited_values.items():
                                 if col_name in df_live.columns:
-                                    if df_live[col_name].dtype in ['float64', 'int64']:
-                                        if val.strip() == '':
-                                            df_live.loc[live_idx, col_name] = float('nan')
-                                        else:
-                                            try:
-                                                df_live.loc[live_idx, col_name] = float(val) if '.' in val else int(val)
-                                            except:
-                                                df_live.loc[live_idx, col_name] = val
-                                    else:
-                                        df_live.loc[live_idx, col_name] = val
+                                    df_live.loc[live_idx, col_name] = val
 
                             updated_csv_str = df_live.to_csv(index=False, encoding="latin1")
                             updated_b64 = base64.b64encode(updated_csv_str.encode("latin1")).decode("utf-8")
