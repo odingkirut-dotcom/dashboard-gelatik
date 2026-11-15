@@ -17,15 +17,15 @@ FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 st.title("🦅 Dashboard & Editor Data - PT. Gelatik Supra")
 st.markdown("Kelola, cari, dan edit data personil. Perubahan akan **langsung tersimpan secara permanen ke file CSV di GitHub**.")
 
-# 1. Fungsi membaca data langsung dari GitHub
+# 1. Fungsi membaca data langsung dari GitHub secara aman
 def load_data_from_github():
     g = Github(st.secrets["GITHUB_TOKEN"])
     repo = g.get_repo(REPO_NAME)
     file_content = repo.get_contents(FILE_PATH)
     
-    # Mengubah raw bytes langsung menggunakan decode latin1 yang aman
-    csv_string = file_content.decoded_content.decode("latin1")
-    df = pd.read_csv(io.StringIO(csv_string), encoding="latin1")
+    # Ambil byte mentah dan baca langsung dengan pandas menggunakan io.BytesIO
+    raw_bytes = file_content.decoded_content
+    df = pd.read_csv(io.BytesIO(raw_bytes), encoding="latin1")
     
     # Filter khusus PT. Gelatik Supra
     if 'NAMA PERUSAHAAN' in df.columns:
@@ -48,18 +48,18 @@ def save_data_to_github(df_updated_gelatik, file_sha, commit_message):
     
     # Ambil file CSV utuh dari GitHub agar data perusahaan lain aman
     original_file = repo.get_contents(FILE_PATH)
-    df_full = pd.read_csv(io.StringIO(original_file.decoded_content.decode("latin1")), encoding="latin1")
+    df_full = pd.read_csv(io.BytesIO(original_file.decoded_content), encoding="latin1")
     
     # Update data perusahaan Gelatik ke dataframe utama
     df_full.update(df_updated_gelatik)
     
-    # Konversi kembali ke string CSV
-    updated_csv_string = df_full.to_csv(index=False, encoding="latin1")
+    # Konversi kembali ke format byte CSV dengan encoding latin1
+    updated_csv_bytes = df_full.to_csv(index=False, encoding="latin1").encode("latin1")
     
     repo.update_file(
         path=FILE_PATH,
         message=commit_message,
-        content=updated_csv_string,
+        content=updated_csv_bytes,
         sha=file_sha
     )
 
