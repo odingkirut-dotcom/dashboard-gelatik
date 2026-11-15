@@ -33,8 +33,6 @@ def load_data_from_github():
         
     if resp.status_code == 200:
         file_decoded = resp.content.decode("latin1")
-        if "404: Not Found" in file_decoded[:50]:
-            raise Exception("File CSV di GitHub sedang berisi teks error '404'. Harap restore isi file CSV di GitHub terlebih dahulu.")
         df = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
         df.columns = df.columns.astype(str).str.strip()
         df = df.fillna("")
@@ -156,17 +154,12 @@ if 'selected_row_idx' in st.session_state:
                             "Accept": "application/vnd.github+json"
                         }
                         
-                        # --- PENGAMAN KETAT: CEK RESPONS API SEBELUM MENULIS ---
                         resp_get = requests.get(api_url, headers=headers)
                         if resp_get.status_code != 200:
-                            st.error(f"Gagal terhubung ke GitHub API (Status: {resp_get.status_code}). Penyimpanan dibatalkan agar file aman.")
+                            st.error(f"Gagal terhubung ke GitHub API (Status: {resp_get.status_code})")
                             st.stop()
                             
                         file_data = resp_get.json()
-                        if "sha" not in file_data:
-                            st.error("Gagal mendapatkan SHA file dari GitHub. Penyimpanan dibatalkan.")
-                            st.stop()
-                            
                         current_sha = file_data["sha"]
                         
                         download_url = file_data.get("download_url")
@@ -177,15 +170,10 @@ if 'selected_row_idx' in st.session_state:
                             file_content_b64 = file_data["content"]
                             file_decoded = base64.b64decode(file_content_b64).decode("latin1")
                             
-                        if "404: Not Found" in file_decoded[:50]:
-                            st.error("File CSV di GitHub rusak. Harap perbaiki isi file CSV di GitHub terlebih dahulu.")
-                            st.stop()
-                            
                         df_live = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
                         df_live.columns = df_live.columns.astype(str).str.strip()
                         df_live = df_live.fillna("")
                         
-                        # Pengaman Indeks Baris
                         while target_idx >= len(df_live):
                             new_row = {col: "" for col in df_live.columns}
                             df_live = pd.concat([df_live, pd.DataFrame([new_row])], ignore_index=True)
