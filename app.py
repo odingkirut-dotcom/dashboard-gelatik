@@ -19,22 +19,20 @@ REPO_NAME = "odingkirut-dotcom/dashboard-gelatik"
 FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
 encoded_path = urllib.parse.quote(FILE_PATH)
-RAW_URL = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}"
 
-# Memuat data terbaru dari GitHub tanpa cache yang mengunci
+# Memuat data terbaru dari GitHub dengan anti-cache timestamp agar selalu fresh
 def load_data_from_github():
-    df = pd.read_csv(RAW_URL, encoding="latin1")
+    # Tambahkan parameter waktu agar CDN GitHub tidak memberikan data lama (cache)
+    raw_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}?t={time.time()}"
+    df = pd.read_csv(raw_url, encoding="latin1")
     return df
 
 try:
-    if 'df_data' not in st.session_state:
-        with st.spinner("Mengambil database nasional terbaru dari GitHub..."):
-            st.session_state.df_data = load_data_from_github()
+    with st.spinner("Mengambil database nasional terbaru dari GitHub..."):
+        df_master = load_data_from_github()
 except Exception as e:
     st.error(f"Gagal memuat data. Detail Error: {e}")
     st.stop()
-
-df = st.session_state.df_data
 
 # Inisialisasi version counter untuk mereset widget form secara total
 if 'form_version' not in st.session_state:
@@ -43,8 +41,6 @@ if 'form_version' not in st.session_state:
 # Tombol muat ulang data terbaru
 if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     st.cache_data.clear()
-    if 'df_data' in st.session_state:
-        del st.session_state['df_data']
     if 'selected_id' in st.session_state:
         del st.session_state['selected_id']
     st.session_state.form_version += 1
@@ -55,8 +51,8 @@ st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
 search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RIKA SITI RUKOYAH):", key="input_search_query")
 
 # Otomatis deteksi kolom nama dan ID secara presisi
-nama_col = next((col for col in df.columns if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), df.columns[1])
-id_col = next((col for col in df.columns if 'id' in str(col).lower() or 'personil' in str(col).lower()), df.columns[0])
+nama_col = next((col for col in df_master.columns if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), df_master.columns[1])
+id_col = next((col for col in df_master.columns if 'id' in str(col).lower() or 'personil' in str(col).lower()), df_master.columns[0])
 
 # Reset pilihan jika kotak pencarian dikosongkan
 if not search_query:
@@ -67,20 +63,20 @@ hasil_cari = pd.DataFrame()
 
 if search_query:
     keywords = search_query.strip().split()
-    mask = pd.Series(True, index=df.index)
+    mask = pd.Series(True, index=df_master.index)
     target_cols = [str(nama_col), str(id_col)]
     
     for kw in keywords:
-        kw_mask = df[target_cols].astype(str).apply(lambda row: row.str.contains(kw, case=False, na=False)).any(axis=1)
+        kw_mask = df_master[target_cols].astype(str).apply(lambda row: row.str.contains(kw, case=False, na=False)).any(axis=1)
         mask = mask & kw_mask
         
-    hasil_cari = df[mask]
+    hasil_cari = df_master[mask]
 
 # Jika ditemukan tepat 1 data dari pencarian
 if not hasil_cari.empty:
     if len(hasil_cari) == 1:
         target_row_idx = hasil_cari.index[0]
-        person = df.loc[target_row_idx]
+        person = df_master.loc[target_row_idx]
         curr_id = str(person.get(id_col, '-'))
         
         st.session_state['selected_id'] = curr_id
@@ -92,11 +88,11 @@ if not hasil_cari.empty:
 if 'selected_id' in st.session_state:
     active_id = st.session_state['selected_id']
     
-    # Ambil data paling fresh dari GitHub setiap kali form dirender
+    # Ambil data paling fresh dari GitHub
     try:
         df_fresh = load_data_from_github()
     except:
-        df_fresh = df
+        df_fresh = df_master
 
     matched_active = df_fresh[df_fresh[id_col].astype(str) == active_id]
     
@@ -108,7 +104,7 @@ if 'selected_id' in st.session_state:
         curr_id = str(person.get(id_col, '-'))
         curr_perusahaan = str(person.get('NAMA PERUSAHAAN', '-'))
 
-        # Formulir Edit dengan Key Dinamis berbasis Version & Timestamp agar selalu segar
+        # Formulir Edit dengan Key Dinamis berbasis Version
         form_key = f"form_edit_{active_id}_{st.session_state.form_version}"
         with st.form(form_key):
             st.markdown(f"### ✏️ Edit Data: **{curr_nama}**")
@@ -121,7 +117,6 @@ if 'selected_id' in st.session_state:
             c1, c2 = st.columns(2)
             for i, col in enumerate(col_names):
                 with (c1 if i % 2 == 0 else c2):
-                    # Key unik yang menjamin nilai widget tidak tersangkut di cache lama
                     unique_key = f"fld_{active_id}_{col}_{st.session_state.form_version}"
                     val_data = person.get(col, '')
                     val_str = '' if pd.isna(val_data) else str(val_data)
@@ -164,10 +159,8 @@ if 'selected_id' in st.session_state:
                                 sha=file_content.sha
                             )
                             
-                            # Naikkan versi form dan bersihkan cache agar siklus berikutnya bersih total
+                            # Naikkan versi form agar widget mereset total dengan data baru
                             st.cache_data.clear()
-                            if 'df_data' in st.session_state:
-                                del st.session_state['df_data']
                             st.session_state.form_version += 1
                                 
                             st.success("✅ Perubahan berhasil disimpan permanen ke file CSV GitHub!")
@@ -182,4 +175,4 @@ else:
     if not search_query:
         st.info("💡 Ketik nama karyawan atau ID pada kotak pencarian di atas untuk mulai mencari.")
         with st.expander("Lihat Seluruh Tabel Database Nasional"):
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(df_master, use_container_width=True)
