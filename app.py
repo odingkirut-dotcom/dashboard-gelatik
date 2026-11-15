@@ -64,7 +64,7 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
 search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RIKA SITI RUKOYAH):", key="input_search_query")
 
-# Deteksi kolom nama dan ID secara aman dengan fallback anti IndexError
+# Deteksi kolom nama dan ID secara aman
 cols_list = list(df_master.columns)
 nama_col = next((col for col in cols_list if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), cols_list[1] if len(cols_list) > 1 else cols_list[0])
 id_col = next((col for col in cols_list if 'id' in str(col).lower() or 'personil' in str(col).lower()), cols_list[0])
@@ -87,19 +87,25 @@ if search_query:
         
     hasil_cari = df_master[mask]
 
-# Jika ditemukan tepat 1 data dari pencarian
+# Logika Penanganan Hasil Pencarian
 if not hasil_cari.empty:
     if len(hasil_cari) == 1:
         target_row_idx = hasil_cari.index[0]
         person = df_master.loc[target_row_idx]
         curr_id = str(person.get(id_col, '-'))
-        
         st.session_state['selected_id'] = curr_id
     else:
-        st.info(f"Ditemukan **{len(hasil_cari)} data** yang cocok:")
-        st.dataframe(hasil_cari, use_container_width=True)
+        st.warning(f"Ditemukan **{len(hasil_cari)} data** yang cocok dengan kata kunci **'{search_query}'**. Ketik nama lebih lengkap atau spesifik agar langsung menuju form edit:")
+        st.dataframe(hasil_cari[[id_col, nama_col, 'NAMA PERUSAHAAN'] if 'NAMA PERUSAHAAN' in df_master.columns else [id_col, nama_col]], use_container_width=True)
+        if 'selected_id' in st.session_state:
+            del st.session_state['selected_id']
+else:
+    if search_query:
+        st.warning("Data tidak ditemukan. Periksa kembali ejaan nama atau ID.")
+    if 'selected_id' in st.session_state:
+        del st.session_state['selected_id']
 
-# Tampilkan Form Edit jika ada ID yang sedang aktif dipilih/ditemukan
+# Tampilkan Form Edit jika ada ID tunggal yang aktif dipilih
 if 'selected_id' in st.session_state:
     active_id = st.session_state['selected_id']
     
@@ -211,6 +217,6 @@ if 'selected_id' in st.session_state:
                         st.error(f"Gagal menyimpan ke GitHub: {e}")
 else:
     if not search_query:
-        st.info("💡 Ketik nama karyawan atau ID pada kotak pencarian di atas untuk mulai mencari.")
+        st.info("💡 Ketik nama lengkap karyawan atau ID pada kotak pencarian di atas agar langsung memunculkan form edit.")
         with st.expander("Lihat Seluruh Tabel Database Nasional"):
             st.dataframe(df_master, use_container_width=True)
