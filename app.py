@@ -13,6 +13,9 @@ st.set_page_config(
     layout="wide"
 )
 
+# Bersihkan semua cache Streamlit secara total agar tidak ada data nyangkut
+st.cache_data.clear()
+
 st.title("🦅 Dashboard Data - Database Nasional")
 st.markdown("Kelola dan edit data personil dengan cepat. Perubahan tersimpan **permanen ke GitHub**.")
 
@@ -22,19 +25,21 @@ FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
 encoded_path = urllib.parse.quote(FILE_PATH)
 
-# Memuat data terbaru dengan pembersihan nama kolom secara total
+# Memuat data terbaru langsung dari GitHub dengan anti-cache tingkat tinggi
 def load_data_from_github():
     api_url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}?t={time.time()}"
     headers = {
         "Authorization": f"Bearer {st.secrets['GITHUB_TOKEN']}",
         "Accept": "application/vnd.github+json",
-        "Cache-Control": "no-cache"
+        "Cache-Control": "no-cache, no-store, must-revalidate"
     }
+    
     resp = requests.get(api_url, headers=headers)
     if resp.status_code == 200:
         file_data = resp.json()
         download_url = file_data.get("download_url")
-        resp_dl = requests.get(f"{download_url}&t={time.time()}")
+        # Unduh file mentah langsung dengan parameter timestamp acak
+        resp_dl = requests.get(f"{download_url}&t={time.time()}", headers={"Cache-Control": "no-cache"})
         file_decoded = resp_dl.content.decode("latin1")
     else:
         raw_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}?t={time.time()}"
@@ -42,7 +47,6 @@ def load_data_from_github():
         file_decoded = resp_dl.content.decode("latin1")
         
     df = pd.read_csv(io.StringIO(file_decoded), encoding="latin1", dtype=str)
-    # Bersihkan semua spasi pada nama kolom
     df.columns = df.columns.astype(str).str.strip()
     df = df.fillna("")
     return df
@@ -60,18 +64,17 @@ if 'form_version' not in st.session_state:
 
 # Tombol muat ulang data terbaru
 if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
-    st.cache_data.clear()
     if 'selected_id' in st.session_state:
         del st.session_state['selected_id']
     st.session_state.form_version += 1
     st.rerun()
 
-# Deteksi kolom secara cerdas (kolom pertama sebagai ID, kolom kedua sebagai Nama jika tidak ada yang cocok)
+# Deteksi kolom secara aman
 cols_list = list(df_master.columns)
 id_col = next((col for col in cols_list if 'id' in col.lower() or 'personil' in col.lower()), cols_list[0])
 nama_col = next((col for col in cols_list if 'nama' in col.lower() and 'perusahaan' not in col.lower() and 'ibu' not in col.lower()), cols_list[1] if len(cols_list) > 1 else cols_list[0])
 
-# --- PENCARIAN SUPER FLEKSIBEL (PARSIAL LINTAS KOLOM) ---
+# --- PENCARIAN SUPER EKSTRIM (MENCOCOKKAN SEMUA SEL TANPA KECUALI) ---
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
 search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: ID-JT000303):", key="input_search_query")
 
@@ -85,13 +88,15 @@ hasil_cari = pd.DataFrame()
 if search_query:
     query_clean = search_query.strip().lower()
     
-    # Cek kecocokan parsial di setiap sel pada seluruh DataFrame
-    mask = pd.Series(False, index=df_master.index)
-    for col in df_master.columns:
-        col_mask = df_master[col].str.lower().str.contains(query_clean, na=False)
-        mask = mask | col_mask
-        
-    hasil_cari = df_master[mask]
+    # Pencarian berlapis: Cek apakah query ada di dalam string baris manapun
+    match_indices = []
+    for idx, row in df_master.iterrows():
+        # Gabungkan seluruh nilai baris menjadi satu teks besar
+        combined_row_text = " ".join(row.values).lower()
+        if query_clean in combined_row_text:
+            match_indices.append(idx)
+            
+    hasil_cari = df_master.loc[match_indices]
 
 # Logika Penanganan Hasil Pencarian
 if not hasil_cari.empty:
@@ -103,7 +108,6 @@ if not hasil_cari.empty:
     else:
         st.warning(f"Ditemukan **{len(hasil_cari)} data** yang cocok dengan kata kunci **'{search_query}'**. Silakan pilih data yang sesuai dari daftar di bawah:")
         
-        # Tampilkan daftar interaktif dengan tombol pilih
         for idx, row in hasil_cari.iterrows():
             c_id = str(row.get(id_col, '-'))
             c_nama = str(row.get(nama_col, '-'))
@@ -121,7 +125,11 @@ if not hasil_cari.empty:
             del st.session_state['selected_id']
 else:
     if search_query:
-        st.warning("Data tidak ditemukan. Periksa kembali ejaan nama atau ID.")
+        st.warning(f"Data '{search_query}' tidak ditemukan di dalam file CSV GitHub.")
+        with st.expander("🔍 Debug Info: Lihat 5 Baris Pertama Data yang Terbaca di Aplikasi"):
+            st.write(f"Total baris dalam CSV: {len(df_master)}")
+            st.write(f"Kolom yang terdeteksi: {cols_list}")
+            st.dataframe(df_master.head(5), use_container_width=True)
     if 'selected_id' in st.session_state:
         del st.session_state['selected_id']
 
