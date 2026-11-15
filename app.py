@@ -60,12 +60,12 @@ if st.sidebar.button("🔄 Muat Ulang Data Terbaru"):
     st.session_state.form_version += 1
     st.rerun()
 
-# Deteksi kolom ID secara aman untuk rujukan data
+# Deteksi kolom ID & Nama secara aman
 cols_list = list(df_master.columns)
 id_col = next((col for col in cols_list if 'id' in str(col).lower() or 'personil' in str(col).lower()), cols_list[0])
 nama_col = next((col for col in cols_list if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), cols_list[1] if len(cols_list) > 1 else cols_list[0])
 
-# --- PENCARIAN UNIVERSAL (MENCOCOKKAN SEMUA KOLOM) ---
+# --- PENCARIAN SUPER CERDAS & UNIVERSAL ---
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
 search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RIKA SITI RUKOYAH):", key="input_search_query")
 
@@ -77,13 +77,14 @@ if not search_query:
 hasil_cari = pd.DataFrame()
 
 if search_query:
-    keywords = search_query.strip().split()
+    keywords = search_query.strip().lower().split()
     
-    # Pencarian cerdas universal ke seluruh kolom tabel tanpa terkecuali
+    # Gabungkan seluruh kolom per baris menjadi satu teks panjang untuk pencarian mutlak
+    row_strings = df_master.astype(str).agg(' '.join, axis=1).str.lower()
+    
     mask = pd.Series(True, index=df_master.index)
     for kw in keywords:
-        kw_mask = df_master.astype(str).apply(lambda row: row.str.contains(kw, case=False, na=False)).any(axis=1)
-        mask = mask & kw_mask
+        mask = mask & row_strings.str.contains(kw, na=False)
         
     hasil_cari = df_master[mask]
 
@@ -95,7 +96,7 @@ if not hasil_cari.empty:
         curr_id = str(person.get(id_col, '-'))
         st.session_state['selected_id'] = curr_id
     else:
-        st.warning(f"Ditemukan **{len(hasil_cari)} data** yang cocok dengan kata kunci **'{search_query}'**. Silakan pilih data yang sesuai dari tabel di bawah:")
+        st.warning(f"Ditemukan **{len(hasil_cari)} data** yang cocok dengan kata kunci **'{search_query}'**. Silakan pilih data yang sesuai dari daftar di bawah:")
         
         # Tampilkan daftar interaktif dengan tombol pilih
         for idx, row in hasil_cari.iterrows():
