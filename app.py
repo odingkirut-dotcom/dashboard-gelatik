@@ -4,12 +4,12 @@ import pandas as pd
 # Konfigurasi Halaman Web
 st.set_page_config(
     page_title="Dashboard Database Nasional",
-    page_icon="🪪",
+    page_icon="📊",
     layout="wide"
 )
 
 # Judul Dashboard
-st.title("🪪 Sistem Pencarian & Form Identitas Karyawan")
+st.title("📊 Sistem Pencarian Database Nasional")
 st.markdown("Data Nasional per **13 November 2026**.")
 
 # Fungsi untuk memuat data
@@ -60,10 +60,9 @@ if 'Area CBS' in df.columns:
 
 st.markdown("---")
 
-# --- PENCARIAN & FORM IDENTITAS ---
-st.subheader("🔎 Cari & Lihat Form Identitas")
-
-search_query = st.text_input("Ketik Nama atau ID Personil (contoh: RIKA SITI RUKOYAH):")
+# --- PENCARIAN CERDAS ---
+st.subheader("🔎 Cari Data Karyawan")
+search_query = st.text_input("Ketik Nama atau ID Personil (Contoh: 'Siti' untuk tabel, atau nama lengkap untuk form):")
 
 if search_query:
     mask = (
@@ -74,21 +73,17 @@ if search_query:
 
     if len(hasil_cari) == 0:
         st.warning("Data tidak ditemukan. Coba periksa kembali ejaan nama.")
-    else:
-        if len(hasil_cari) > 1:
-            st.info(f"Ditemukan {len(hasil_cari)} data yang mirip. Silakan pilih satu orang di bawah ini:")
-            pilihan_orang = hasil_cari['ID Personil'].astype(str) + " - " + hasil_cari['Nama'] + " (" + hasil_cari['Nama Project'].fillna('-') + ")"
-            selected_label = st.selectbox("Pilih Personil:", pilihan_orang)
-            selected_id = selected_label.split(" - ")[0]
-            person = hasil_cari[hasil_cari['ID Personil'].astype(str) == selected_id].iloc[0]
-        else:
-            person = hasil_cari.iloc[0]
+    
+    # KONDISI 1: Jika hasil pencarian HANYA 1 ORANG -> Tampilkan Form Identitas
+    elif len(hasil_cari) == 1:
+        person = hasil_cari.iloc[0]
 
         def val(col_name):
             v = person.get(col_name, "-")
             return "-" if pd.isna(v) or str(v).strip() == "" else str(v)
 
-        # --- TAMPILAN KARTU FORM IDENTITAS ---
+        st.success(f"Ditemukan 1 data spesifik untuk: **{val('Nama')}**")
+
         with st.container(border=True):
             st.markdown(f"### 👤 {val('Nama')}")
             st.caption(f"**ID Personil:** {val('ID Personil')}  |  **Perusahaan:** {val('NAMA PERUSAHAAN')}  |  **Masa Kerja:** {val('MASA KERJA')}")
@@ -137,7 +132,12 @@ if search_query:
                     st.markdown(f"**No. NPWP:** `{val('No NPWP')}`")
                     st.markdown(f"**No. Jamsostek / BPJS:** {val('No Jamsostek')} / {val('No BPJS Kesehatan')}")
 
+    # KONDISI 2: Jika hasil pencarian BANYAK ORANG (seperti mengetik "Siti") -> Tampilkan Tabel
+    else:
+        st.info(f"Ditemukan **{len(hasil_cari)} data** yang cocok dengan kata kunci **'{search_query}'**. Ditampilkan dalam bentuk tabel:")
+        st.dataframe(hasil_cari, use_container_width=True)
+
 else:
-    st.info("💡 Silakan ketik nama atau ID personil pada kotak pencarian di atas untuk memunculkan Form Identitas.")
+    st.info("💡 Silakan ketik nama pada kotak pencarian di atas. Jika mengetik nama umum (misal: **'Siti'**), akan muncul tabel daftar nama. Jika mengetik nama lengkap, akan muncul form identitas spesifik.")
     with st.expander("Lihat Seluruh Tabel Database (Klik untuk membuka)"):
         st.dataframe(df, use_container_width=True)
