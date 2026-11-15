@@ -22,7 +22,7 @@ FILE_PATH = "Summary Database Nasional 13 November 2026.csv"
 
 encoded_path = urllib.parse.quote(FILE_PATH)
 
-# Memuat data terbaru langsung dari REST API GitHub (bypass raw cache)
+# Memuat data terbaru dan membersihkan spasi nama kolom secara otomatis
 def load_data_from_github():
     api_url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}?t={time.time()}"
     headers = {
@@ -36,10 +36,15 @@ def load_data_from_github():
         download_url = file_data.get("download_url")
         resp_dl = requests.get(f"{download_url}&t={time.time()}")
         file_decoded = resp_dl.content.decode("latin1")
-        return pd.read_csv(io.StringIO(file_decoded), encoding="latin1")
     else:
         raw_url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{encoded_path}?t={time.time()}"
-        return pd.read_csv(raw_url, encoding="latin1")
+        resp_dl = requests.get(raw_url)
+        file_decoded = resp_dl.content.decode("latin1")
+        
+    df = pd.read_csv(io.StringIO(file_decoded), encoding="latin1")
+    # Bersihkan spasi berlebih pada semua nama kolom
+    df.columns = df.columns.astype(str).str.strip()
+    return df
 
 try:
     with st.spinner("Mengambil database nasional terbaru dari GitHub..."):
@@ -65,7 +70,7 @@ cols_list = list(df_master.columns)
 id_col = next((col for col in cols_list if 'id' in str(col).lower() or 'personil' in str(col).lower()), cols_list[0])
 nama_col = next((col for col in cols_list if 'nama' in str(col).lower() and 'perusahaan' not in str(col).lower() and 'ibu' not in str(col).lower()), cols_list[1] if len(cols_list) > 1 else cols_list[0])
 
-# --- PENCARIAN AMAN & KOMPATIBEL ---
+# --- PENCARIAN ROBUST & ANTI-GAGAL ---
 st.subheader("🔎 Cari Karyawan Berdasarkan Nama / ID")
 search_query = st.text_input("Ketik Nama Lengkap, Bagian Nama, atau ID (Contoh: RIKA SITI RUKOYAH):", key="input_search_query")
 
@@ -79,16 +84,14 @@ hasil_cari = pd.DataFrame()
 if search_query:
     keywords = search_query.strip().lower().split()
     
-    # Buat gabungan teks per baris dengan aman menggunakan list comprehension
-    row_texts = df_master.astype(str).values
+    # Pencarian lintas seluruh kolom dengan mengubah baris menjadi string utuh
     match_indices = []
-    
-    for idx, row in enumerate(row_texts):
-        row_str = " ".join(row).lower()
+    for idx, row in df_master.iterrows():
+        row_str = " ".join(row.astype(str).values).lower()
         if all(kw in row_str for kw in keywords):
             match_indices.append(idx)
             
-    hasil_cari = df_master.iloc[match_indices]
+    hasil_cari = df_master.loc[match_indices]
 
 # Logika Penanganan Hasil Pencarian
 if not hasil_cari.empty:
@@ -191,6 +194,7 @@ if 'selected_id' in st.session_state:
                             st.stop()
                             
                         df_live = pd.read_csv(io.StringIO(file_decoded), encoding="latin1")
+                        df_live.columns = df_live.columns.astype(str).str.strip()
                         
                         matched_live = df_live[df_live[id_col].astype(str) == active_id]
                         
